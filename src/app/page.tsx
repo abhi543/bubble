@@ -9,7 +9,9 @@
       • Silly smiling monsters that drift down from the sky
       • Pop them with bubbles & stars → confetti + sparkles + happy sounds!
       • 5 hearts, 3 easy levels, reward screens, cheerful music, mute button
-      • Press START GAME → choose Kids or Grown-Ups → pop!
+      • Press START GAME → pick Kids or Grown-Ups → choose your pal → pop!
+      • 4 cute pals: Rocky 🚀 · Dolly 🐬 · Bunny 🐰 · Zippy 🤖 — each shoots
+        their own bubble & has their own pop sound (SETUP 2½ · CHARACTERS)
       • QUIT GAME appears only after a game ends (out of hearts — or champion!)
 
    🕹  CONTROLS
@@ -19,7 +21,7 @@
    🔧  EASY TWEAKING GUIDE FOR PARENTS & KIDS
       1. CHANGE SPEEDS ....... look for "SETUP 3 · LEVELS" below
       2. CHANGE COLORS ....... look for "SETUP 1 · COLORS" below
-      3. CHANGE CHARACTERS ... look for "drawRocket()" and "drawMonster()"
+      3. CHANGE CHARACTERS ... look for "SETUP 2½ · CHARACTERS" + "drawCharacter()"
       4. CHANGE SOUNDS ....... look for the "GameAudio" class
       Every important number has a friendly comment next to it. Have fun! 💛
 
@@ -30,6 +32,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
+  Check,
   DoorOpen,
   Heart,
   PartyPopper,
@@ -133,6 +136,80 @@ const MODES: Record<Mode, ModeConfig> = {
 const levelsOf = (m: Mode): LevelConfig[] => MODES[m].levels
 const FONT = '"Comic Sans MS", "Chalkboard SE", "Comic Neue", system-ui, sans-serif'
 
+/* ───────────────────────────────────────────────────────────────────────
+   SETUP 2½ · CHARACTERS 🚀🐬🐰🤖 — the four pals you can play as!
+   Change a friend's colors, name, or bubble right here:
+     body/trim/belly = the main paint colors (hex like '#ff8a5c')
+     bubble          = the special bubble they shoot:
+                       'star' | 'water' | 'heart' | 'rainbow'
+     bobAmp          = how much they bob up & down while hovering (pixels)
+     bobSpeed        = how fast they bob (bigger = bouncier!)
+   The faces (smile / surprised / cheer) are drawn in drawCharacter() below.
+   ─────────────────────────────────────────────────────────────────────── */
+type CharacterId = 'rocky' | 'dolly' | 'bunny' | 'zippy'
+type FaceExpr = 'smile' | 'surprised' | 'cheer'
+
+interface CharacterConfig {
+  name: string // shown on the selection card
+  emoji: string // little helper for text lines
+  tagline: string // what they shoot, in kid words
+  body: string // main color
+  trim: string // outline / details color
+  belly: string // tummy / lighter patch color
+  bubble: Shot['kind'] // their signature bubble
+  bobAmp: number // hover bounce height (pixels)
+  bobSpeed: number // hover bounce speed
+}
+
+const CHARACTERS: Record<CharacterId, CharacterConfig> = {
+  rocky: {
+    name: 'Rocky the Rocket',
+    emoji: '🚀',
+    tagline: 'shoots star bubbles',
+    body: '#ff8a5c',
+    trim: '#e26a3d',
+    belly: '#ffd9c4',
+    bubble: 'star',
+    bobAmp: 4,
+    bobSpeed: 2.2,
+  },
+  dolly: {
+    name: 'Dolly the Dolphin',
+    emoji: '🐬',
+    tagline: 'shoots water bubbles',
+    body: '#59c6ee',
+    trim: '#2f9ec7',
+    belly: '#cdefff',
+    bubble: 'water',
+    bobAmp: 6,
+    bobSpeed: 1.7,
+  },
+  bunny: {
+    name: 'Bunny Bubbles',
+    emoji: '🐰',
+    tagline: 'shoots heart bubbles',
+    body: '#ffb3d4',
+    trim: '#f278ab',
+    belly: '#ffe1ee',
+    bubble: 'heart',
+    bobAmp: 8,
+    bobSpeed: 3.1,
+  },
+  zippy: {
+    name: 'Zippy the Robot',
+    emoji: '🤖',
+    tagline: 'shoots rainbow bubbles',
+    body: '#ffd93d',
+    trim: '#e8a800',
+    belly: '#fff3bf',
+    bubble: 'rainbow',
+    bobAmp: 3,
+    bobSpeed: 2.8,
+  },
+}
+
+const CHARACTER_LIST: CharacterId[] = ['rocky', 'dolly', 'bunny', 'zippy']
+
 /* Testing cheat: add "?turbo" to the URL and monsters appear crazy fast
    and each level only needs 2 pops (handy for grown-ups checking rewards).
    It is detected inside the game (client-side only) to keep SSR happy. */
@@ -149,7 +226,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
 
 /* ───────────────────────────── game types ───────────────────────────── */
-type UIState = 'menu' | 'modeSelect' | 'playing' | 'levelClear' | 'over' | 'won' | 'bye'
+type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'playing' | 'levelClear' | 'over' | 'won' | 'bye'
 
 interface Monster {
   x: number
@@ -170,7 +247,7 @@ interface Shot {
   y: number
   vy: number
   r: number
-  kind: 'bubble' | 'star'
+  kind: 'star' | 'water' | 'heart' | 'rainbow' // each pal shoots their own!
   wob: number
 }
 
@@ -202,7 +279,15 @@ interface GameData {
   h: number
   turbo: boolean // "?turbo" testing mode
   time: number // total seconds elapsed (for animations)
-  player: { x: number; tilt: number; cool: number }
+  character: CharacterId // the pal you picked on the selection screen
+  player: {
+    x: number
+    tilt: number
+    cool: number
+    surprised: number // >0 = "uh-oh!" face after losing a heart
+    cheer: number // >0 = hip-hip-hooray face when a level is done
+    blink: number // counts down to the next cute blink
+  }
   targetX: number | null // finger/mouse position while dragging
   dragging: boolean
   monsters: Monster[]
@@ -215,18 +300,25 @@ interface GameData {
   score: number // total stars collected (across all levels)
   hearts: number
   spawnT: number // countdown until the next monster appears
-  shotIndex: number // alternates bubble / star
 }
 
 function freshGame(): GameData {
+  // greet you with the pal you played last time (if we can remember them)
+  let savedPal: CharacterId = 'rocky'
+  try {
+    const s = typeof window !== 'undefined' ? localStorage.getItem('bubblePopCharacter') : null
+    if (s === 'rocky' || s === 'dolly' || s === 'bunny' || s === 'zippy') savedPal = s
+  } catch {
+    /* private browsing — no problem */
+  }
   return {
     state: 'menu',
     w: 800,
     h: 600,
     turbo: typeof window !== 'undefined' && window.location.search.includes('turbo'),
-    mode: 'kids',
+    character: savedPal,
     time: 0,
-    player: { x: 400, tilt: 0, cool: 0 },
+    player: { x: 400, tilt: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
     targetX: null,
     dragging: false,
     monsters: [],
@@ -243,7 +335,6 @@ function freshGame(): GameData {
     score: 0,
     hearts: MODES.kids.hearts,
     spawnT: 0.8,
-    shotIndex: 0,
   }
 }
 
@@ -344,6 +435,32 @@ class GameAudio {
     const base = pick([523.25, 587.33, 659.25, 783.99, 880])
     this.tone({ freq: base, time: t, dur: 0.18, type: 'triangle', vol: 0.22 })
     this.tone({ freq: base * 2, time: t + 0.04, dur: 0.12, vol: 0.09 })
+  }
+
+  /* Every pal has their OWN happy pop! 🎵
+     rocky = bright ding · dolly = watery blub-blub
+     bunny = soft boing  · zippy = arcade bleep-bloop
+     Change the notes freely — sillier is better! */
+  popFor(char: CharacterId) {
+    this.init()
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    if (char === 'rocky') {
+      // ⭐ a bright little ding-ding!
+      this.tone({ freq: 784, time: t, dur: 0.14, type: 'triangle', vol: 0.22 })
+      this.tone({ freq: 1568, time: t + 0.04, dur: 0.1, vol: 0.08 })
+    } else if (char === 'dolly') {
+      // 💧 a watery blub-blub (slides up like a droplet)
+      this.tone({ freq: 300, time: t, dur: 0.16, type: 'sine', vol: 0.22, glide: 620 })
+      this.tone({ freq: 520, time: t + 0.07, dur: 0.1, type: 'sine', vol: 0.1, glide: 740 })
+    } else if (char === 'bunny') {
+      // 💗 a soft springy boing
+      this.tone({ freq: 440, time: t, dur: 0.18, type: 'triangle', vol: 0.22, glide: 660 })
+    } else {
+      // 🌈 an arcade bleep-bloop
+      this.tone({ freq: 660, time: t, dur: 0.08, type: 'square', vol: 0.1 })
+      this.tone({ freq: 990, time: t + 0.06, dur: 0.1, type: 'square', vol: 0.08 })
+    }
   }
 
   /* gentle "oops" when a monster slips past — friendly, never scary */
@@ -477,41 +594,66 @@ function starPath(
   ctx.closePath()
 }
 
-/* Every character shares this happy face 🙂 */
-function happyFace(ctx: CanvasRenderingContext2D, r: number, blinking: boolean, scale = 1, dy = 0) {
-  const ex = r * 0.34 * scale
-  const ey = -r * 0.1 + dy
-  const er = r * 0.2 * scale
-  if (blinking) {
-    // eyes closed = two happy little arcs
+/* 🥰 THE PAL'S FACE — three moods, used by all four characters:
+     smile     = happy default (with cute blinks)
+     surprised = "uh-oh!" round eyes + little O mouth (after losing a heart)
+     cheer     = squeezed-shut happy eyes + big open grin (level complete!)
+   dx / dy move the face inside the character (like Rocky's window). */
+function palFace(ctx: CanvasRenderingContext2D, r: number, expr: FaceExpr, blink: boolean, dx = 0, dy = 0) {
+  ctx.save()
+  ctx.translate(dx, dy)
+  const ex = r * 0.36 // eye spacing
+  const ey = -r * 0.12 // eye height
+  const er = r * 0.22 // eye radius
+  if (expr === 'cheer') {
+    // ^ ^  two happy squeezed-shut eyes
+    ctx.strokeStyle = COLORS.face
+    ctx.lineWidth = 2.5
+    ctx.lineCap = 'round'
+    for (const side of [-1, 1]) {
+      ctx.beginPath()
+      ctx.arc(side * ex, ey, er, Math.PI * 1.1, Math.PI * 1.9)
+      ctx.stroke()
+    }
+  } else {
+    // big white eyes — extra wide when surprised!
+    const big = expr === 'surprised' ? 1.3 : 1
+    ctx.fillStyle = '#ffffff'
+    circle(ctx, -ex, ey, er * big)
+    circle(ctx, ex, ey, er * big)
+    // pupils — tiny and high when surprised, low and calm when smiling
+    ctx.fillStyle = COLORS.face
+    const pr = expr === 'surprised' ? er * 0.3 : er * 0.45
+    const py = expr === 'surprised' ? ey - er * 0.15 : ey + er * 0.25
+    circle(ctx, -ex, py, pr)
+    circle(ctx, ex, py, pr)
+  }
+  // the mouth
+  if (expr === 'surprised') {
+    // 😮 a little round "O" mouth
+    ctx.fillStyle = COLORS.face
+    circle(ctx, 0, r * 0.24, r * 0.16)
+  } else if (expr === 'cheer') {
+    // 🥳 a big open grin
+    ctx.fillStyle = COLORS.face
+    ctx.beginPath()
+    ctx.arc(0, r * 0.06, r * 0.3, Math.PI * 0.12, Math.PI * 0.88)
+    ctx.closePath()
+    ctx.fill()
+  } else {
+    // 🙂 the classic smile
     ctx.strokeStyle = COLORS.face
     ctx.lineWidth = 2.5
     ctx.lineCap = 'round'
     ctx.beginPath()
-    ctx.arc(-ex, ey, er * 0.9, Math.PI * 1.1, Math.PI * 1.9)
+    ctx.arc(0, r * 0.12, r * 0.3, Math.PI * 0.2, Math.PI * 0.8)
     ctx.stroke()
-    ctx.beginPath()
-    ctx.arc(ex, ey, er * 0.9, Math.PI * 1.1, Math.PI * 1.9)
-    ctx.stroke()
-  } else {
-    ctx.fillStyle = '#ffffff'
-    circle(ctx, -ex, ey, er)
-    circle(ctx, ex, ey, er)
-    ctx.fillStyle = COLORS.face
-    circle(ctx, -ex, ey + er * 0.25, er * 0.45)
-    circle(ctx, ex, ey + er * 0.25, er * 0.45)
   }
-  // the smile 🙂
-  ctx.strokeStyle = COLORS.face
-  ctx.lineWidth = 2.5
-  ctx.lineCap = 'round'
-  ctx.beginPath()
-  ctx.arc(0, dy + r * 0.12, r * 0.3, Math.PI * 0.2, Math.PI * 0.8)
-  ctx.stroke()
-  // rosy cheeks
-  ctx.fillStyle = 'rgba(255,110,150,0.35)'
-  circle(ctx, -r * 0.55, dy + r * 0.1, r * 0.14)
-  circle(ctx, r * 0.55, dy + r * 0.1, r * 0.14)
+  // rosy cheeks — extra rosy when cheering!
+  ctx.fillStyle = expr === 'cheer' ? 'rgba(255,110,150,0.5)' : 'rgba(255,110,150,0.35)'
+  circle(ctx, -r * 0.6, r * 0.1, r * 0.14)
+  circle(ctx, r * 0.6, r * 0.1, r * 0.14)
+  ctx.restore()
 }
 
 /* ☁️ one puffy cloud */
@@ -592,81 +734,242 @@ function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
   }
 }
 
-/* 🚀 THE PLAYER — a friendly rocket with a smiley pilot.
-   Want a different character? Redraw the shapes in this function! */
+/* 💗 a chunky rounded heart (for Bunny's bubbles & Zippy's tummy panel) */
+function heartPath(ctx: CanvasRenderingContext2D, x: number, y: number, s: number) {
+  ctx.beginPath()
+  ctx.moveTo(x, y + s * 0.9)
+  ctx.bezierCurveTo(x - s * 1.2, y + s * 0.1, x - s * 0.75, y - s * 0.9, x, y - s * 0.25)
+  ctx.bezierCurveTo(x + s * 0.75, y - s * 0.9, x + s * 1.2, y + s * 0.1, x, y + s * 0.9)
+  ctx.closePath()
+}
+
+/* 🚀🐬🐰🤖 THE PLAYER — whichever pal you picked on the selection screen!
+   Each friend bobs at their own speed (CHARACTERS.bobAmp/bobSpeed) and
+   shows a different face: smile · surprised (lost a heart) · cheer (level done). */
 function drawPlayer(ctx: CanvasRenderingContext2D, g: GameData) {
   const p = g.player
-  const py = g.h - 96 + Math.sin(g.time * 2.2) * 4 // gentle hover bob
+  const c = CHARACTERS[g.character]
+  // gentle hover bob — cheering pals bounce extra high!
+  const bob = Math.sin(g.time * c.bobSpeed) * c.bobAmp * (p.cheer > 0 ? 1.9 : 1)
+  const py = g.h - 96 + bob
   ctx.save()
   ctx.translate(p.x, py)
   ctx.rotate(p.tilt)
-
-  // 🔥 flame (drawn first so it sits behind the rocket) — flickers happily
-  const fl = 1 + Math.sin(g.time * 24) * 0.18
-  ctx.fillStyle = COLORS.flame
-  ctx.beginPath()
-  ctx.ellipse(0, 42, 9 * fl, 16 * fl, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = '#ff9f43'
-  ctx.beginPath()
-  ctx.ellipse(0, 47, 5 * fl, 9 * fl, 0, 0, Math.PI * 2)
-  ctx.fill()
-
-  // fins
-  ctx.fillStyle = COLORS.playerTrim
-  ctx.beginPath()
-  ctx.moveTo(-14, 12)
-  ctx.quadraticCurveTo(-30, 26, -26, 38)
-  ctx.quadraticCurveTo(-18, 30, -10, 28)
-  ctx.closePath()
-  ctx.fill()
-  ctx.beginPath()
-  ctx.moveTo(14, 12)
-  ctx.quadraticCurveTo(30, 26, 26, 38)
-  ctx.quadraticCurveTo(18, 30, 10, 28)
-  ctx.closePath()
-  ctx.fill()
-
-  // body
-  roundRectPath(ctx, -18, -34, 36, 68, 18)
-  ctx.fillStyle = COLORS.playerBody
-  ctx.fill()
-  ctx.lineWidth = 3
-  ctx.strokeStyle = COLORS.playerTrim
-  ctx.stroke()
-
-  // round window with the pilot's happy face
-  ctx.beginPath()
-  ctx.arc(0, -4, 12, 0, Math.PI * 2)
-  ctx.fillStyle = COLORS.playerWindow
-  ctx.fill()
-  ctx.strokeStyle = COLORS.playerTrim
-  ctx.stroke()
-  ctx.fillStyle = COLORS.face
-  circle(ctx, -4, -8, 1.9)
-  circle(ctx, 4, -8, 1.9)
-  ctx.strokeStyle = COLORS.face
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.arc(0, -6, 5.5, Math.PI * 0.2, Math.PI * 0.8)
-  ctx.stroke()
-  ctx.fillStyle = 'rgba(255,110,150,0.4)'
-  circle(ctx, -8.5, -2, 2.2)
-  circle(ctx, 8.5, -2, 2.2)
-
-  // antenna with a golden ball
-  ctx.strokeStyle = COLORS.playerTrim
-  ctx.lineWidth = 3
-  ctx.beginPath()
-  ctx.moveTo(0, -34)
-  ctx.lineTo(0, -44)
-  ctx.stroke()
-  ctx.fillStyle = COLORS.flame
-  circle(ctx, 0, -47, 4.5)
-  ctx.fillStyle = 'rgba(255,255,255,0.8)'
-  circle(ctx, -1.5, -48.5, 1.4)
-
+  const expr: FaceExpr = p.surprised > 0 ? 'surprised' : p.cheer > 0 ? 'cheer' : 'smile'
+  const blink = p.blink < 0 && p.blink > -0.15
+  drawCharacter(ctx, g.character, expr, g.time, blink)
   ctx.restore()
+}
+
+/* 🎨 THE FOUR PALS — every friend is drawn centered at (0,0), about 85px tall.
+   Want to change a character? Tweak the shapes & colors right here!
+   (The names & colors themselves live in CHARACTERS at the top.) */
+function drawCharacter(ctx: CanvasRenderingContext2D, id: CharacterId, expr: FaceExpr, t: number, blink = false) {
+  const c = CHARACTERS[id]
+  ctx.lineJoin = 'round'
+
+  if (id === 'rocky') {
+    /* 🚀 ROCKY THE ROCKET — red & white with a smiley round window */
+    // 🔥 flame (behind everything) — flickers happily
+    const fl = 1 + Math.sin(t * 24) * 0.18
+    ctx.fillStyle = COLORS.flame
+    ctx.beginPath()
+    ctx.ellipse(0, 42, 9 * fl, 16 * fl, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#ff9f43'
+    ctx.beginPath()
+    ctx.ellipse(0, 47, 5 * fl, 9 * fl, 0, 0, Math.PI * 2)
+    ctx.fill()
+    // fins
+    ctx.fillStyle = c.trim
+    ctx.beginPath()
+    ctx.moveTo(-14, 12)
+    ctx.quadraticCurveTo(-30, 26, -26, 38)
+    ctx.quadraticCurveTo(-18, 30, -10, 28)
+    ctx.closePath()
+    ctx.fill()
+    ctx.beginPath()
+    ctx.moveTo(14, 12)
+    ctx.quadraticCurveTo(30, 26, 26, 38)
+    ctx.quadraticCurveTo(18, 30, 10, 28)
+    ctx.closePath()
+    ctx.fill()
+    // body
+    roundRectPath(ctx, -18, -34, 36, 68, 18)
+    ctx.fillStyle = c.body
+    ctx.fill()
+    ctx.lineWidth = 3
+    ctx.strokeStyle = c.trim
+    ctx.stroke()
+    // round window with the pal's face inside
+    ctx.beginPath()
+    ctx.arc(0, -4, 12.5, 0, Math.PI * 2)
+    ctx.fillStyle = '#dff3ff'
+    ctx.fill()
+    ctx.strokeStyle = c.trim
+    ctx.stroke()
+    palFace(ctx, 12, expr, blink)
+    // antenna with a golden ball
+    ctx.strokeStyle = c.trim
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(0, -34)
+    ctx.lineTo(0, -44)
+    ctx.stroke()
+    ctx.fillStyle = COLORS.flame
+    circle(ctx, 0, -47, 4.5)
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    circle(ctx, -1.5, -48.5, 1.4)
+  } else if (id === 'dolly') {
+    /* 🐬 DOLLY THE DOLPHIN — a happy dolphin jumping upward */
+    // 💦 little splash droplets under the tail
+    ctx.fillStyle = 'rgba(150,215,250,0.85)'
+    for (let i = 0; i < 3; i++) {
+      circle(ctx, (i - 1) * 8, 34 + Math.sin(t * 5 + i * 2) * 3, 3 - i * 0.5)
+    }
+    // tail flukes (drawn first so the body overlaps them)
+    ctx.fillStyle = c.trim
+    for (const side of [-1, 1]) {
+      ctx.save()
+      ctx.translate(side * 6, 27)
+      ctx.rotate(side * 0.55)
+      ctx.beginPath()
+      ctx.ellipse(0, 0, 7, 3.5, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+    // body: a smooth teardrop, nose up!
+    ctx.beginPath()
+    ctx.moveTo(0, -27)
+    ctx.bezierCurveTo(16, -27, 18, -8, 12, 8)
+    ctx.bezierCurveTo(9, 16, 5, 22, 3, 25)
+    ctx.lineTo(-3, 25)
+    ctx.bezierCurveTo(-5, 22, -9, 16, -12, 8)
+    ctx.bezierCurveTo(-18, -8, -16, -27, 0, -27)
+    ctx.closePath()
+    ctx.fillStyle = c.body
+    ctx.fill()
+    ctx.lineWidth = 3
+    ctx.strokeStyle = c.trim
+    ctx.stroke()
+    // lighter tummy
+    ctx.beginPath()
+    ctx.ellipse(0, 4, 8, 15, 0, 0, Math.PI * 2)
+    ctx.fillStyle = c.belly
+    ctx.fill()
+    // side flippers
+    ctx.fillStyle = c.trim
+    for (const side of [-1, 1]) {
+      ctx.save()
+      ctx.translate(side * 13, 3)
+      ctx.rotate(side * 0.6)
+      ctx.beginPath()
+      ctx.ellipse(0, 0, 4, 8, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    }
+    // 💦 tiny spray dancing above the blowhole
+    ctx.fillStyle = 'rgba(190,235,255,0.9)'
+    circle(ctx, -4, -33 + Math.sin(t * 4) * 2, 2)
+    circle(ctx, 3, -36 + Math.sin(t * 4 + 1) * 2, 1.6)
+    // the face (up on the head)
+    palFace(ctx, 14, expr, blink, 0, -12)
+  } else if (id === 'bunny') {
+    /* 🐰 BUNNY BUBBLES — a fluffy pink bunny inside a bubble helmet */
+    // 🫧 tiny bubbles floating below
+    ctx.fillStyle = 'rgba(150,215,245,0.8)'
+    circle(ctx, -8, 30 + Math.sin(t * 3) * 2, 3)
+    circle(ctx, 7, 34 + Math.sin(t * 3 + 1.5) * 2, 2.4)
+    circle(ctx, 0, 40 + Math.sin(t * 3 + 3) * 2, 1.8)
+    // long floppy ears (they sway gently!)
+    for (const side of [-1, 1]) {
+      ctx.save()
+      ctx.translate(side * 8, -26)
+      ctx.rotate(side * 0.2 + Math.sin(t * 2 + side) * 0.06)
+      ctx.beginPath()
+      ctx.ellipse(0, 0, 6.5, 16, 0, 0, Math.PI * 2)
+      ctx.fillStyle = c.body
+      ctx.fill()
+      ctx.lineWidth = 2.5
+      ctx.strokeStyle = c.trim
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.ellipse(0, 3, 3, 9.5, 0, 0, Math.PI * 2)
+      ctx.fillStyle = c.belly
+      ctx.fill()
+      ctx.restore()
+    }
+    // little round body
+    ctx.beginPath()
+    ctx.ellipse(0, 20, 11, 9, 0, 0, Math.PI * 2)
+    ctx.fillStyle = c.body
+    ctx.fill()
+    ctx.lineWidth = 2.5
+    ctx.strokeStyle = c.trim
+    ctx.stroke()
+    // fluffy head
+    ctx.beginPath()
+    ctx.arc(0, -2, 17, 0, Math.PI * 2)
+    ctx.fillStyle = c.body
+    ctx.fill()
+    ctx.stroke()
+    // the face
+    palFace(ctx, 15, expr, blink, 0, -2)
+    // 🫧 clear bubble helmet around it all
+    ctx.beginPath()
+    ctx.arc(0, -6, 27, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(215,242,255,0.18)'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(120,200,235,0.95)'
+    ctx.lineWidth = 2.5
+    ctx.stroke()
+    // helmet shine
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'
+    ctx.lineWidth = 3
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.arc(0, -6, 22, -2.3, -1.5)
+    ctx.stroke()
+  } else {
+    /* 🤖 ZIPPY THE ROBOT — a small, round, friendly yellow robot */
+    // 💨 little jet puffs below
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    circle(ctx, -6, 31 + Math.sin(t * 10) * 2, 3.5)
+    circle(ctx, 6, 34 + Math.sin(t * 10 + 2) * 2, 3)
+    // antenna with a blinking light
+    ctx.strokeStyle = c.trim
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(0, -24)
+    ctx.lineTo(0, -32)
+    ctx.stroke()
+    ctx.fillStyle = Math.sin(t * 6) > 0 ? '#ff8fb1' : COLORS.flame
+    circle(ctx, 0, -35, 4)
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'
+    circle(ctx, -1.3, -36.3, 1.3)
+    // round body
+    roundRectPath(ctx, -20, -22, 40, 48, 14)
+    ctx.fillStyle = c.body
+    ctx.fill()
+    ctx.lineWidth = 3
+    ctx.strokeStyle = c.trim
+    ctx.stroke()
+    // side bolts (robot ears!)
+    ctx.fillStyle = c.trim
+    circle(ctx, -23, 2, 4.5)
+    circle(ctx, 23, 2, 4.5)
+    // tummy panel with a tiny heart
+    roundRectPath(ctx, -12, 2, 24, 16, 6)
+    ctx.fillStyle = c.belly
+    ctx.fill()
+    ctx.lineWidth = 2
+    ctx.stroke()
+    heartPath(ctx, 0, 9, 5)
+    ctx.fillStyle = '#ff8fb1'
+    ctx.fill()
+    // the face
+    palFace(ctx, 16, expr, blink, 0, -8)
+  }
 }
 
 /* 👾 THE MONSTERS — three silly, smiling kinds (never scary!).
@@ -703,7 +1006,7 @@ function drawMonster(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     // shine
     ctx.fillStyle = 'rgba(255,255,255,0.35)'
     circle(ctx, -r * 0.35, -r * 0.42, r * 0.16)
-    happyFace(ctx, r, m.blink < 0 && m.blink > -0.15)
+    palFace(ctx, r, 'smile', m.blink < 0 && m.blink > -0.15)
   } else if (m.kind === 1) {
     /* balloon on a string */
     ctx.strokeStyle = 'rgba(0,0,0,0.25)'
@@ -729,7 +1032,7 @@ function drawMonster(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.fill()
     ctx.fillStyle = 'rgba(255,255,255,0.35)'
     circle(ctx, -r * 0.3, -r * 0.4, r * 0.14)
-    happyFace(ctx, r * 0.95, m.blink < 0 && m.blink > -0.15)
+    palFace(ctx, r * 0.95, 'smile', m.blink < 0 && m.blink > -0.15)
   } else {
     /* star critter ⭐ */
     starPath(ctx, 0, 0, r * 1.3, r * 0.62, 5, -Math.PI / 2 + Math.sin(m.wob) * 0.15)
@@ -739,24 +1042,16 @@ function drawMonster(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.lineWidth = 3
     ctx.lineJoin = 'round'
     ctx.stroke()
-    happyFace(ctx, r * 0.75, m.blink < 0 && m.blink > -0.15)
+    palFace(ctx, r * 0.75, 'smile', m.blink < 0 && m.blink > -0.15)
   }
   ctx.restore()
 }
 
-/* 🫧 the bubbles & stars you shoot */
-function drawShot(ctx: CanvasRenderingContext2D, s: Shot) {
-  if (s.kind === 'bubble') {
-    ctx.beginPath()
-    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
-    ctx.fillStyle = 'rgba(205,242,255,0.85)'
-    ctx.fill()
-    ctx.strokeStyle = 'rgba(110,190,235,0.95)'
-    ctx.lineWidth = 2
-    ctx.stroke()
-    ctx.fillStyle = 'rgba(255,255,255,0.85)'
-    circle(ctx, s.x - 3.5, s.y - 3.5, 3)
-  } else {
+/* 🫧 THE FOUR BUBBLES — each pal fires their own!
+   star ⭐ (Rocky) · water 💧 (Dolly) · heart 💗 (Bunny) · rainbow 🌈 (Zippy) */
+function drawShot(ctx: CanvasRenderingContext2D, s: Shot, time: number) {
+  if (s.kind === 'star') {
+    // ⭐ Rocky's golden star bubble
     starPath(ctx, s.x, s.y, s.r + 2, (s.r + 2) * 0.45, 5, s.wob * 2 - Math.PI / 2)
     ctx.fillStyle = COLORS.sun
     ctx.fill()
@@ -764,6 +1059,39 @@ function drawShot(ctx: CanvasRenderingContext2D, s: Shot) {
     ctx.lineWidth = 2
     ctx.lineJoin = 'round'
     ctx.stroke()
+  } else if (s.kind === 'water') {
+    // 💧 Dolly's splashy water bubble
+    ctx.beginPath()
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(190,235,255,0.92)'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(80,180,225,0.95)'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    circle(ctx, s.x - 3.5, s.y - 3.5, 2.8)
+  } else if (s.kind === 'heart') {
+    // 💗 Bunny's wobbly love bubble
+    heartPath(ctx, s.x, s.y, s.r + 2)
+    ctx.fillStyle = '#ff9ec4'
+    ctx.fill()
+    ctx.strokeStyle = '#f278ab'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'
+    circle(ctx, s.x - s.r * 0.35, s.y - s.r * 0.5, 2.2)
+  } else {
+    // 🌈 Zippy's rainbow bubble — it cycles colors as it flies!
+    const hue = (time * 220 + s.wob * 57) % 360
+    ctx.beginPath()
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
+    ctx.fillStyle = `hsla(${hue}, 90%, 88%, 0.92)`
+    ctx.fill()
+    ctx.strokeStyle = `hsl(${hue}, 85%, 58%)`
+    ctx.lineWidth = 2.5
+    ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    circle(ctx, s.x - 3.5, s.y - 3.5, 2.8)
   }
 }
 
@@ -885,7 +1213,7 @@ function drawParticles(ctx: CanvasRenderingContext2D, g: GameData) {
 function render(ctx: CanvasRenderingContext2D, g: GameData) {
   drawBackground(ctx, g)
   for (const m of g.monsters) drawMonster(ctx, m, g.time)
-  for (const s of g.shots) drawShot(ctx, s)
+  for (const s of g.shots) drawShot(ctx, s, g.time)
   drawPlayer(ctx, g)
   drawParticles(ctx, g)
 }
@@ -893,14 +1221,41 @@ function render(ctx: CanvasRenderingContext2D, g: GameData) {
 /* ═══════════════════════════════════════════════════════════════════════
    🕹 THE GAME COMPONENT — wires everything together
    ═══════════════════════════════════════════════════════════════════════ */
+/* 🖼 A tiny canvas that draws any pal — used on the selection cards and
+   next to the hearts. Same art as the game, so everyone matches! */
+function CharacterPortrait({ id, size, expr = 'smile' }: { id: CharacterId; size: number; expr?: FaceExpr }) {
+  const ref = useRef<HTMLCanvasElement | null>(null)
+  useEffect(() => {
+    const cv = ref.current
+    if (!cv) return
+    const ctx = cv.getContext('2d')
+    if (!ctx) return
+    const dpr = 2 // draw double-size so faces stay crisp
+    cv.width = size * dpr
+    cv.height = size * dpr
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, size, size)
+    ctx.save()
+    ctx.translate(size / 2, size / 2 + size * 0.05)
+    const scale = size / 110 // pals are drawn about 110px tall at full size
+    ctx.scale(scale, scale)
+    drawCharacter(ctx, id, expr, 0.4) // a fixed moment = a lively pose
+    ctx.restore()
+  }, [id, size, expr])
+  return <canvas ref={ref} style={{ width: size, height: size }} aria-hidden />
+}
+
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const gRef = useRef<GameData | null>(null)
   const audioRef = useRef<GameAudio | null>(null)
   const controlsRef = useRef<{
-    start: (mode: Mode) => void
+    startGame: () => void
     showModes: () => void
+    pickMode: (mode: Mode) => void
+    backToModes: () => void
+    selectCharacter: (c: CharacterId) => void
     next: () => void
     toggleMute: () => void
     toMenu: () => void
@@ -920,18 +1275,22 @@ export default function Home() {
     maxHearts: MODES.kids.hearts,
     score: 0,
     mode: 'kids' as Mode,
+    character: 'rocky' as CharacterId,
   })
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
   const [hurtKey, setHurtKey] = useState(0) // changing this re-plays the heart-shake
   const [lastMode, setLastMode] = useState<Mode | null>(null) // ⭐ chip on the mode you played last time
+  const [pal, setPal] = useState<CharacterId>('rocky') // pal highlighted on the selection screen
 
-  // remember which mode was played last visit (purely cosmetic highlight)
+  // remember which mode & pal you chose last visit (purely cosmetic highlights)
   useEffect(() => {
     const id = setTimeout(() => {
       try {
         const saved = localStorage.getItem('bubblePopMode')
         if (saved === 'kids' || saved === 'adults') setLastMode(saved)
+        const savedPal = localStorage.getItem('bubblePopCharacter')
+        if (savedPal === 'rocky' || savedPal === 'dolly' || savedPal === 'bunny' || savedPal === 'zippy') setPal(savedPal)
       } catch {
         /* private browsing — no problem */
       }
@@ -975,20 +1334,26 @@ export default function Home() {
       setHud((prev) => {
         const goal = goalOf(g)
         const maxHearts = MODES[g.mode].hearts
-        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode)
+        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode && prev.character === g.character)
           return prev
-        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode }
+        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode, character: g.character }
       })
     }
 
-    /* 🫧 fire a bubble (or a star!) */
+    /* 🫧 fire your pal's special bubble! (star / water / heart / rainbow) */
     const shootNow = () => {
       if (g.state !== 'playing' || g.player.cool > 0) return
       g.player.cool = MODES[g.mode].shootCooldown
-      g.shotIndex++
-      const kind: 'bubble' | 'star' = g.shotIndex % 2 === 1 ? 'bubble' : 'star'
+      const kind = CHARACTERS[g.character].bubble // every pal fires their own!
       const py = g.h - 96
-      g.shots.push({ x: g.player.x, y: py - 40, vy: -PLAYER.shotSpeed, r: kind === 'star' ? 12 : 10, kind, wob: rand(0, 6) })
+      g.shots.push({
+        x: g.player.x,
+        y: py - 44,
+        vy: -PLAYER.shotSpeed,
+        r: kind === 'star' ? 12 : kind === 'heart' ? 11 : 10,
+        kind,
+        wob: rand(0, 6),
+      })
       audio.shoot()
     }
 
@@ -1000,6 +1365,8 @@ export default function Home() {
       g.spawnT = 0.6
       g.player.x = g.w / 2
       g.player.cool = 0
+      g.player.surprised = 0 // fresh face, fresh level!
+      g.player.cheer = 0
       g.dragging = false
       g.targetX = null
       g.state = 'playing'
@@ -1009,18 +1376,47 @@ export default function Home() {
       syncHud()
     }
 
-    const start = (mode: Mode) => {
+    /* mode picked! now off to choose your pal 🚀🐬🐰🤖 */
+    const pickMode = (m: Mode) => {
       audio.init()
       audio.click()
-      g.mode = mode
-      g.level = 0
-      g.score = 0
-      g.hearts = MODES[mode].hearts
+      g.mode = m
       try {
-        localStorage.setItem('bubblePopMode', mode) // remember it for next visit
+        localStorage.setItem('bubblePopMode', m) // remember it for next visit
       } catch {
         /* private browsing — no problem */
       }
+      g.state = 'charSelect'
+      setUi('charSelect')
+    }
+
+    /* change your mind — back to the mode screen */
+    const backToModes = () => {
+      audio.click()
+      g.state = 'modeSelect'
+      setUi('modeSelect')
+    }
+
+    /* tap a pal card — hear their happy pop & see them glow! */
+    const selectCharacter = (c: CharacterId) => {
+      audio.init()
+      g.character = c
+      audio.popFor(c) // preview this pal's pop sound!
+      setPal(c)
+      try {
+        localStorage.setItem('bubblePopCharacter', c) // remember your pal
+      } catch {
+        /* private browsing — no problem */
+      }
+    }
+
+    /* LET'S GO! → level 1 with your pal */
+    const startGame = () => {
+      audio.init()
+      audio.click()
+      g.level = 0
+      g.score = 0
+      g.hearts = MODES[g.mode].hearts
       beginLevel()
     }
 
@@ -1067,6 +1463,7 @@ export default function Home() {
       }
       g.monsters.length = 0
       g.shots.length = 0
+      g.player.cheer = 3 // 🥳 your pal cheers behind the reward screen!
       const maxHearts = MODES[g.mode].hearts
       const earned = g.hearts >= maxHearts ? 3 : g.hearts >= Math.ceil(maxHearts / 2) ? 2 : 1
       setStars(earned)
@@ -1087,6 +1484,7 @@ export default function Home() {
     /* a monster reached the ground — lose one heart, stay cheerful */
     const loseHeart = (m: Monster) => {
       g.hearts--
+      g.player.surprised = 1.2 // 😮 "uh-oh!" face for a moment
       setHurtKey((k) => k + 1)
       audio.oops()
       addText(g, clamp(m.x, 60, g.w - 60), g.h - 150, 'Oops!', '#ff8fb1')
@@ -1122,6 +1520,11 @@ export default function Home() {
     /* ════════ THE HEARTBEAT: runs ~60 times per second ════════ */
     const update = (dt: number) => {
       g.time += dt
+      // pal mood timers tick even behind menus (so the cheer keeps dancing!)
+      if (g.player.surprised > 0) g.player.surprised -= dt
+      if (g.player.cheer > 0) g.player.cheer -= dt
+      g.player.blink -= dt
+      if (g.player.blink < -0.15) g.player.blink = rand(2, 4.5)
       // clouds drift in every state (even behind the menus — so cozy)
       for (const c of g.clouds) {
         c.x -= c.v * dt
@@ -1195,7 +1598,7 @@ export default function Home() {
             burst(g, m.x, m.y, m.color) // confetti + sparkles! 🎉
             g.popped++
             g.score++
-            audio.pop()
+            audio.popFor(g.character) // your pal's own happy pop!
             if (g.popped >= goal) completeLevel()
             break
           }
@@ -1276,7 +1679,7 @@ export default function Home() {
       setMuted(audio.muted)
       audio.click()
     }
-    controlsRef.current = { start, showModes, next, toggleMute, toMenu, bye }
+    controlsRef.current = { startGame, showModes, pickMode, backToModes, selectCharacter, next, toggleMute, toMenu, bye }
 
     /* ── go! ── */
     let raf = 0
@@ -1338,9 +1741,10 @@ export default function Home() {
       >
         <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" aria-label="Bubble Pop Adventure game" role="img" />
 
-        {/* ── HUD: hearts (top-left) ── */}
+        {/* ── HUD: pal face + hearts (top-left) ── */}
         <div className="pointer-events-none absolute left-3 top-3 z-30">
-          <div key={hurtKey} className={`flex gap-1 rounded-full bg-white/85 px-4 py-2 shadow-md ${hud.hearts < hud.maxHearts ? 'heart-shake' : ''}`}>
+          <div key={hurtKey} className={`flex items-center gap-1.5 rounded-full bg-white/85 py-2 pl-3 pr-4 shadow-md ${hud.hearts < hud.maxHearts ? 'heart-shake' : ''}`}>
+            <CharacterPortrait id={hud.character} size={34} />
             {Array.from({ length: MODES[hud.mode].hearts }, (_, i) => (
               <Heart
                 key={i}
@@ -1441,7 +1845,7 @@ export default function Home() {
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.start('kids')
+                  controlsRef.current?.pickMode('kids')
                 }}
                 className="relative mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95"
               >
@@ -1457,7 +1861,7 @@ export default function Home() {
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.start('adults')
+                  controlsRef.current?.pickMode('adults')
                 }}
                 className="relative mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95"
               >
@@ -1476,6 +1880,62 @@ export default function Home() {
                   controlsRef.current?.toMenu()
                 }}
                 className="mt-4 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
+              >
+                go back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ════════ OVERLAY: PICK YOUR PAL! (after choosing a mode) ════════ */}
+        {ui === 'charSelect' && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
+            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-amber-200 bg-white p-5 text-center shadow-2xl sm:p-6">
+              <h2 className="text-2xl font-extrabold text-pink-500 sm:text-3xl">Pick your pal! 🎉</h2>
+              <p className="mt-1 text-sm font-bold text-gray-500">Tap a friend, then press LET&rsquo;S GO!</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {CHARACTER_LIST.map((id) => {
+                  const c = CHARACTERS[id]
+                  const sel = pal === id
+                  return (
+                    <button
+                      key={id}
+                      onClick={(e) => {
+                        e.currentTarget.blur()
+                        controlsRef.current?.selectCharacter(id)
+                      }}
+                      aria-pressed={sel}
+                      className={`relative flex flex-col items-center rounded-3xl border-4 px-2 pb-3 pt-2 transition active:scale-95 ${sel ? 'scale-[1.03] border-amber-300 bg-amber-50 shadow-xl shadow-amber-100' : 'border-amber-100 bg-white shadow-md hover:border-amber-200'}`}
+                    >
+                      <div className={sel ? 'wiggle' : 'floaty'}>
+                        <CharacterPortrait id={id} size={86} />
+                      </div>
+                      <span className="mt-1 text-sm font-extrabold leading-tight text-gray-700">{c.name}</span>
+                      <span className="mt-0.5 text-[11px] font-bold text-gray-400">{c.tagline}</span>
+                      {sel && (
+                        <span className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-amber-300 bg-white shadow" aria-hidden>
+                          <Check size={15} strokeWidth={3.5} className="text-amber-500" />
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.startGame()
+                }}
+                className="mt-4 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-amber-400 text-2xl font-extrabold text-white shadow-lg shadow-amber-200 transition hover:bg-amber-500 active:scale-95"
+              >
+                <Play size={30} aria-hidden /> LET&rsquo;S GO!
+              </button>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.backToModes()
+                }}
+                className="mt-2 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
               >
                 go back
               </button>
@@ -1511,6 +1971,9 @@ export default function Home() {
               <p className="mt-1 flex items-center justify-center gap-1 text-sm font-bold text-rose-400">
                 <Heart size={16} className="fill-rose-400 text-rose-400" aria-hidden /> +{MODES[hud.mode].hearts} fresh hearts for the next level!
               </p>
+              <p className="mt-1 text-sm font-bold text-amber-500">
+                {CHARACTERS[hud.character].emoji} {CHARACTERS[hud.character].name} is so proud of you!
+              </p>
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
@@ -1533,13 +1996,16 @@ export default function Home() {
               <p className="mt-2 text-base font-bold text-gray-500">
                 The silly monsters say “good game!” 👾
               </p>
+              <p className="mt-1 text-sm font-bold text-amber-500">
+                {CHARACTERS[hud.character].emoji} {CHARACTERS[hud.character].name} says “Great try, friend!”
+              </p>
               <p className="mt-3 flex items-center justify-center gap-1.5 text-lg font-extrabold text-amber-500">
                 <Star size={22} className="fill-amber-400 text-amber-400" aria-hidden /> You collected {hud.score} stars!
               </p>
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.start(hud.mode)
+                  controlsRef.current?.startGame()
                 }}
                 className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-2xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95"
               >
@@ -1577,10 +2043,13 @@ export default function Home() {
               <p className="mt-4 flex items-center justify-center gap-1.5 text-xl font-extrabold text-pink-500">
                 <Star size={24} className="fill-amber-400 text-amber-400" aria-hidden /> {hud.score} stars collected!
               </p>
+              <p className="mt-1 text-sm font-bold text-amber-500">
+                {CHARACTERS[hud.character].emoji} {CHARACTERS[hud.character].name} cheered the whole way!
+              </p>
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.start(hud.mode)
+                  controlsRef.current?.startGame()
                 }}
                 className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-2xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95"
               >
