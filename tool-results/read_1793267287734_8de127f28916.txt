@@ -1,0 +1,702 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→/* ═══════════════════════════════════════════════════════════════════════
+     4→     4→   🫧  BUBBLE POP ADVENTURE — a happy, no-violence arcade game for kids 5–10
+     5→     5→   ═══════════════════════════════════════════════════════════════════════
+     6→     6→
+     7→     7→   ✨ WHAT'S INSIDE (everything lives in THIS ONE FILE!)
+     8→     8→      • A cute rocket you steer at the bottom of the screen
+     9→     9→      • 6 silly enemy friends & a big goofy BOSS at the end of every level!
+    10→    10→      • Pop them with bubbles & stars → confetti + sparkles + happy sounds!
+    11→    11→      • 5 hearts, 3 easy levels, reward screens, cheerful music, mute button
+    12→    12→      • Press START GAME → pick Kids or Grown-Ups → choose your pal → pop!
+    13→    13→      • 4 cute pals: Rocky 🚀 · Dolly 🐬 · Bunny 🐰 · Zippy 🤖 — each shoots
+    14→    14→        their own bubble & has their own pop sound (SETUP 2½ · CHARACTERS)
+    15→    15→      • QUIT GAME appears only after a game ends (out of hearts — or champion!)
+    16→    16→
+    17→    17→   🕹  CONTROLS
+    18→    18→      • Keyboard:  ← →  (or A / D) to move  •  SPACE (hold it!) to shoot
+    19→    19→      • Touch/Mouse: drag your finger to move  •  tap the screen to shoot
+    20→    20→
+    21→    21→   🔧  EASY TWEAKING GUIDE FOR PARENTS & KIDS
+    22→    22→      1. CHANGE SPEEDS ....... look for "SETUP 3 · LEVELS" below
+    23→    23→      2. CHANGE COLORS ....... look for "SETUP 1 · COLORS" below
+    24→    24→      3. CHANGE CHARACTERS ... look for "SETUP 2½ · CHARACTERS" + "drawCharacter()"
+    25→    25→      4. CHANGE SOUNDS ....... look for the "GameAudio" class
+    26→    26→      5. ADD NEW ENEMIES ..... look for "SETUP 2¾ · ENEMY FRIENDS" below
+    27→    27→      Every important number has a friendly comment next to it. Have fun! 💛
+    28→    28→
+    29→    29→   🧪 TESTING CHEAT: add "?turbo" to the URL to make friends & bosses appear
+    30→    30→      super fast (handy for grown-ups who want to check the reward screens).
+    31→    31→   ═══════════════════════════════════════════════════════════════════════ */
+    32→    32→
+    33→    33→import { useEffect, useRef, useState } from 'react'
+    34→    34→import {
+    35→    35→  ArrowRight,
+    36→    36→  Check,
+    37→    37→  DoorOpen,
+    38→    38→  Heart,
+    39→    39→  PartyPopper,
+    40→    40→  Play,
+    41→    41→  RotateCcw,
+    42→    42→  Sparkles,
+    43→    43→  Star,
+    44→    44→  Trophy,
+    45→    45→  Volume2,
+    46→    46→  VolumeX,
+    47→    47→} from 'lucide-react'
+    48→    48→
+    49→    49→/* ───────────────────────────────────────────────────────────────────────
+    50→    50→   SETUP 1 · COLORS 🎨  —  change these to re-paint the whole game!
+    51→    51→   ─────────────────────────────────────────────────────────────────────── */
+    52→    52→const COLORS = {
+    53→    53→  skyTop: '#a5e8ff', // top of the sky
+    54→    54→  skyBottom: '#fff3c9', // bottom of the sky (warm glow)
+    55→    55→  sun: '#ffd93d', // the smiling sun
+    56→    56→  hillLight: '#8ee06e', // front grassy hill
+    57→    57→  hillDark: '#5ec44f', // back grassy hill
+    58→    58→  playerBody: '#ff8a5c', // rocket body (coral)
+    59→    59→  playerTrim: '#e26a3d', // rocket outline / fins
+    60→    60→  playerWindow: '#dff3ff', // rocket window
+    61→    61→  flame: '#ffd93d', // rocket flame
+    62→    62→  confetti: ['#ff8fb1', '#ffd93d', '#7fd8be', '#b18aff', '#ff9f43', '#4ecdc4', '#ff6b6b'],
+    63→    63→  face: '#5b4a3f', // eyes & smiles on every character
+    64→    64→}
+    65→    65→
+    66→    66→/* ───────────────────────────────────────────────────────────────────────
+    67→    67→   SETUP 2 · GAME MODES 🧒🧑‍🚀  —  Kids vs Grown-Ups. Tune each one here!
+    68→    68→     hearts         = how many hearts you get in this mode
+    69→    69→     monsterRadius  = smallest & biggest monster size (smaller = trickier)
+    70→    70→     shootCooldown  = seconds between bubbles (smaller = faster shooting)
+    71→    71→     fastMusic      = true = the music loops a little quicker (extra pep!)
+    72→    72→   ─────────────────────────────────────────────────────────────────────── */
+    73→    73→type Mode = 'kids' | 'adults'
+    74→    74→
+    75→    75→interface LevelConfig {
+    76→    76→  name: string
+    77→    77→  goal: number
+    78→    78→  spawnEvery: number
+    79→    79→  spawnEveryMin: number
+    80→    80→  fallSpeed: number
+    81→    81→  fallSpeedMax: number
+    82→    82→  drift: number
+    83→    83→  maxOnScreen: number
+    84→    84→}
+    85→    85→
+    86→    86→interface ModeConfig {
+    87→    87→  label: string
+    88→    88→  emoji: string
+    89→    89→  blurb: string
+    90→    90→  hearts: number
+    91→    91→  monsterRadius: [number, number]
+    92→    92→  shootCooldown: number
+    93→    93→  fastMusic: boolean
+    94→    94→  levels: LevelConfig[]
+    95→    95→}
+    96→    96→
+    97→    97→/* ── per-level settings (same meaning in both modes):
+    98→    98→     goal          = how many friends to pop before the level BOSS arrives!
+    99→    99→     spawnEvery    = seconds between new monsters at the START of a level
+   100→   100→     spawnEveryMin = the fastest the level ever gets at spawning
+   101→   101→     fallSpeed     = how fast monsters fall at the start (pixels/second)
+   102→   102→     fallSpeedMax  = how fast they fall once you're almost done
+   103→   103→     drift         = how much they wiggle side to side
+   104→   104→     maxOnScreen   = never more than this many monsters at once             */
+   105→   105→const MODES: Record<Mode, ModeConfig> = {
+   106→   106→  kids: {
+   107→   107→    label: 'KIDS MODE',
+   108→   108→    emoji: '🧒',
+   109→   109→    blurb: 'slow & giggly · 5 hearts · big silly monsters',
+   110→   110→    hearts: 5,
+   111→   111→    monsterRadius: [22, 30],
+   112→   112→    shootCooldown: 0.32,
+   113→   113→    fastMusic: false,
+   114→   114→    levels: [
+   115→   115→      { name: 'Level 1', goal: 10, spawnEvery: 2.2, spawnEveryMin: 1.5, fallSpeed: 45, fallSpeedMax: 80, drift: 22, maxOnScreen: 4 },
+   116→   116→      { name: 'Level 2', goal: 15, spawnEvery: 1.8, spawnEveryMin: 1.1, fallSpeed: 60, fallSpeedMax: 105, drift: 30, maxOnScreen: 5 },
+   117→   117→      { name: 'Level 3', goal: 20, spawnEvery: 1.5, spawnEveryMin: 0.9, fallSpeed: 75, fallSpeedMax: 130, drift: 38, maxOnScreen: 6 },
+   118→   118→    ],
+   119→   119→  },
+   120→   120→  adults: {
+   121→   121→    label: 'GROWN-UPS MODE',
+   122→   122→    emoji: '🧑‍🚀',
+   123→   123→    blurb: 'fast & tricky · 3 hearts · tiny sneaky monsters',
+   124→   124→    hearts: 3,
+   125→   125→    monsterRadius: [15, 22],
+   126→   126→    shootCooldown: 0.26,
+   127→   127→    fastMusic: true,
+   128→   128→    levels: [
+   129→   129→      { name: 'Level 1', goal: 15, spawnEvery: 1.5, spawnEveryMin: 0.9, fallSpeed: 95, fallSpeedMax: 170, drift: 45, maxOnScreen: 6 },
+   130→   130→      { name: 'Level 2', goal: 22, spawnEvery: 1.2, spawnEveryMin: 0.7, fallSpeed: 115, fallSpeedMax: 210, drift: 60, maxOnScreen: 8 },
+   131→   131→      { name: 'Level 3', goal: 30, spawnEvery: 1.0, spawnEveryMin: 0.55, fallSpeed: 135, fallSpeedMax: 250, drift: 75, maxOnScreen: 10 },
+   132→   132→    ],
+   133→   133→  },
+   134→   134→}
+   135→   135→
+   136→   136→/* ───────────────────────────────────────────────────────────────────────
+   137→   137→   SETUP 2¾ · ENEMY FRIENDS 👾 — every silly pal you can pop, in ONE place!
+   138→   138→   ───────────────────────────────────────────────────────────────────────
+   139→   139→   HOW TO ADD YOUR OWN NEW ENEMY (grown-ups & kids together!):
+   140→   140→     1. Add a block below — give it a fun name, a bright color & numbers.
+   141→   141→     2. Pick a movement:  'straight' (floats down)  · 'zigzag' (wiggles)
+   142→   142→        'bounce' (wall-to-wall)        · 'spin'   (twirls around)
+   143→   143→        'drift'  (crosses the sky)     · 'fade'   (blinks in & out)
+   144→   144→     3. Add a drawing for it in drawEnemy() below — search "DRAW THE ENEMIES".
+   145→   145→     That's it! It will join the party all by itself once "fromLevel" is reached.
+   146→   146→   ─────────────────────────────────────────────────────────────────────── */
+   147→   147→type EnemyType = 'blobby' | 'zoe' | 'bob' | 'spinny' | 'cloud' | 'ghosty'
+   148→   148→type MoveKind = 'straight' | 'zigzag' | 'bounce' | 'spin' | 'drift' | 'fade'
+   149→   149→
+   150→   150→interface EnemyConfig {
+   151→   151→  name: string // shown in the "Meet a new friend!" pop-up
+   152→   152→  emoji: string // little picture in the pop-up
+   153→   153→  hint: string // one friendly line about how it moves
+   154→   154→  hp: number // bubbles needed to pop it
+   155→   155→  sizeMul: number // size (× the normal monster size for the mode)
+   156→   156→  speedMul: number // falling speed (× the level's fall speed)
+   157→   157→  fromLevel: number // level index (0, 1 or 2) where it first appears
+   158→   158→  weight: number // how often it shows up (bigger = more common)
+   159→   159→  color: string // its bright cartoon color
+   160→   160→  move: MoveKind // movement pattern (see the list above!)
+   161→   161→}
+   162→   162→
+   163→   163→const ENEMIES: Record<EnemyType, EnemyConfig> = {
+   164→   164→  blobby: {
+   165→   165→    name: 'Blobby the Blob',
+   166→   166→    emoji: '🟢',
+   167→   167→    hint: 'floats down slow & happy',
+   168→   168→    hp: 1, // pops with 1 bubble
+   169→   169→    sizeMul: 1,
+   170→   170→    speedMul: 0.85, // extra slow & gentle
+   171→   171→    fromLevel: 0, // appears in ALL levels
+   172→   172→    weight: 3, // the most common friend
+   173→   173→    color: '#7ec850',
+   174→   174→    move: 'straight',
+   175→   175→  },
+   176→   176→  zoe: {
+   177→   177→    name: 'Zigzag Zoe',
+   178→   178→    emoji: '🟠',
+   179→   179→    hint: 'wiggles in a gentle zigzag',
+   180→   180→    hp: 1,
+   181→   181→    sizeMul: 0.95,
+   182→   182→    speedMul: 0.9,
+   183→   183→    fromLevel: 0, // appears from level 1
+   184→   184→    weight: 2,
+   185→   185→    color: '#ff9f43',
+   186→   186→    move: 'zigzag',
+   187→   187→  },
+   188→   188→  bob: {
+   189→   189→    name: 'Bouncy Bob',
+   190→   190→    emoji: '🟣',
+   191→   191→    hint: 'bounces off the walls!',
+   192→   192→    hp: 1,
+   193→   193→    sizeMul: 0.92,
+   194→   194→    speedMul: 0.6, // falls slowly while bouncing side to side
+   195→   195→    fromLevel: 1, // appears from level 2
+   196→   196→    weight: 2,
+   197→   197→    color: '#b18aff',
+   198→   198→    move: 'bounce',
+   199→   199→  },
+   200→   200→  spinny: {
+   201→   201→    name: 'Spinny Spike',
+   202→   202→    emoji: '⭐',
+   203→   203→    hint: 'spins like a happy top!',
+   204→   204→    hp: 1,
+   205→   205→    sizeMul: 0.85,
+   206→   206→    speedMul: 1.2, // a bit faster than the others!
+   207→   207→    fromLevel: 1, // appears from level 2
+   208→   208→    weight: 2,
+   209→   209→    color: '#ffd93d',
+   210→   210→    move: 'spin',
+   211→   211→  },
+   212→   212→  cloud: {
+   213→   213→    name: 'Sleepy Cloud',
+   214→   214→    emoji: '☁️',
+   215→   215→    hint: 'needs 2 bubbles — tee-hee!',
+   216→   216→    hp: 2, // after the first boop it giggles & turns lighter
+   217→   217→    sizeMul: 1.15,
+   218→   218→    speedMul: 0.55, // drifts slowly across the whole sky
+   219→   219→    fromLevel: 1, // appears from level 2
+   220→   220→    weight: 1,
+   221→   221→    color: '#aebfd4',
+   222→   222→    move: 'drift',
+   223→   223→  },
+   224→   224→  ghosty: {
+   225→   225→    name: 'Sneaky Ghosty',
+   226→   226→    emoji: '👻',
+   227→   227→    hint: 'pop it when you can see it!',
+   228→   228→    hp: 1,
+   229→   229→    sizeMul: 1,
+   230→   230→    speedMul: 0.7,
+   231→   231→    fromLevel: 2, // appears in level 3
+   232→   232→    weight: 1.5,
+   233→   233→    color: '#ffffff',
+   234→   234→    move: 'fade', // fades in & out — only poppable when visible!
+   235→   235→  },
+   236→   236→}
+   237→   237→
+   238→   238→/* 👑 THE LEVEL BOSSES — a big friendly pal guards the end of every level!
+   239→   239→     Level 1 = Giant Jelly 🍮 · Level 2 = Big Bouncy Bunny 🐰 · Level 3 = King Blobby 👑
+   240→   240→   hpKids / hpAdults = bubbles needed (8–12) · bonus = extra stars for winning
+   241→   241→   swingAmp = how far it glides side to side (× screen width)
+   242→   242→   swingSpeed = how fast it glides (bigger = bouncier). */
+   243→   243→interface BossConfig {
+   244→   244→  key: 'jelly' | 'bunny' | 'king'
+   245→   245→  name: string
+   246→   246→  emoji: string
+   247→   247→  color: string
+   248→   248→  hpKids: number
+   249→   249→  hpAdults: number
+   250→   250→  bonus: number
+   251→   251→  swingAmp: number
+   252→   252→  swingSpeed: number
+   253→   253→}
+   254→   254→
+   255→   255→const BOSSES: BossConfig[] = [
+   256→   256→  { key: 'jelly', name: 'Giant Jelly', emoji: '🍮', color: '#ff8fb1', hpKids: 8, hpAdults: 10, bonus: 3, swingAmp: 0.26, swingSpeed: 1.1 },
+   257→   257→  { key: 'bunny', name: 'Big Bouncy Bunny', emoji: '🐰', color: '#b28dff', hpKids: 9, hpAdults: 11, bonus: 4, swingAmp: 0.3, swingSpeed: 1.7 },
+   258→   258→  { key: 'king', name: 'King Blobby', emoji: '👑', color: '#7ec850', hpKids: 10, hpAdults: 12, bonus: 5, swingAmp: 0.22, swingSpeed: 0.9 },
+   259→   259→]
+   260→   260→
+   261→   261→const levelsOf = (m: Mode): LevelConfig[] => MODES[m].levels
+   262→   262→const FONT = '"Comic Sans MS", "Chalkboard SE", "Comic Neue", system-ui, sans-serif'
+   263→   263→
+   264→   264→/* ───────────────────────────────────────────────────────────────────────
+   265→   265→   SETUP 2½ · CHARACTERS 🚀🐬🐰🤖 — the four pals you can play as!
+   266→   266→   Change a friend's colors, name, or bubble right here:
+   267→   267→     body/trim/belly = the main paint colors (hex like '#ff8a5c')
+   268→   268→     bubble          = the special bubble they shoot:
+   269→   269→                       'star' | 'water' | 'heart' | 'rainbow'
+   270→   270→     bobAmp          = how much they bob up & down while hovering (pixels)
+   271→   271→     bobSpeed        = how fast they bob (bigger = bouncier!)
+   272→   272→   The faces (smile / surprised / cheer) are drawn in drawCharacter() below.
+   273→   273→   ─────────────────────────────────────────────────────────────────────── */
+   274→   274→type CharacterId = 'rocky' | 'dolly' | 'bunny' | 'zippy'
+   275→   275→type FaceExpr = 'smile' | 'surprised' | 'cheer'
+   276→   276→
+   277→   277→interface CharacterConfig {
+   278→   278→  name: string // shown on the selection card
+   279→   279→  emoji: string // little helper for text lines
+   280→   280→  tagline: string // what they shoot, in kid words
+   281→   281→  body: string // main color
+   282→   282→  trim: string // outline / details color
+   283→   283→  belly: string // tummy / lighter patch color
+   284→   284→  bubble: Shot['kind'] // their signature bubble
+   285→   285→  bobAmp: number // hover bounce height (pixels)
+   286→   286→  bobSpeed: number // hover bounce speed
+   287→   287→}
+   288→   288→
+   289→   289→const CHARACTERS: Record<CharacterId, CharacterConfig> = {
+   290→   290→  rocky: {
+   291→   291→    name: 'Rocky the Rocket',
+   292→   292→    emoji: '🚀',
+   293→   293→    tagline: 'shoots star bubbles',
+   294→   294→    body: '#ff8a5c',
+   295→   295→    trim: '#e26a3d',
+   296→   296→    belly: '#ffd9c4',
+   297→   297→    bubble: 'star',
+   298→   298→    bobAmp: 4,
+   299→   299→    bobSpeed: 2.2,
+   300→   300→  },
+   301→   301→  dolly: {
+   302→   302→    name: 'Dolly the Dolphin',
+   303→   303→    emoji: '🐬',
+   304→   304→    tagline: 'shoots water bubbles',
+   305→   305→    body: '#59c6ee',
+   306→   306→    trim: '#2f9ec7',
+   307→   307→    belly: '#cdefff',
+   308→   308→    bubble: 'water',
+   309→   309→    bobAmp: 6,
+   310→   310→    bobSpeed: 1.7,
+   311→   311→  },
+   312→   312→  bunny: {
+   313→   313→    name: 'Bunny Bubbles',
+   314→   314→    emoji: '🐰',
+   315→   315→    tagline: 'shoots heart bubbles',
+   316→   316→    body: '#ffb3d4',
+   317→   317→    trim: '#f278ab',
+   318→   318→    belly: '#ffe1ee',
+   319→   319→    bubble: 'heart',
+   320→   320→    bobAmp: 8,
+   321→   321→    bobSpeed: 3.1,
+   322→   322→  },
+   323→   323→  zippy: {
+   324→   324→    name: 'Zippy the Robot',
+   325→   325→    emoji: '🤖',
+   326→   326→    tagline: 'shoots rainbow bubbles',
+   327→   327→    body: '#ffd93d',
+   328→   328→    trim: '#e8a800',
+   329→   329→    belly: '#fff3bf',
+   330→   330→    bubble: 'rainbow',
+   331→   331→    bobAmp: 3,
+   332→   332→    bobSpeed: 2.8,
+   333→   333→  },
+   334→   334→}
+   335→   335→
+   336→   336→const CHARACTER_LIST: CharacterId[] = ['rocky', 'dolly', 'bunny', 'zippy']
+   337→   337→
+   338→   338→/* Testing cheat: add "?turbo" to the URL and monsters appear crazy fast
+   339→   339→   and each level only needs 2 pops (handy for grown-ups checking rewards).
+   340→   340→   It is detected inside the game (client-side only) to keep SSR happy. */
+   341→   341→
+   342→   342→const PLAYER = {
+   343→   343→  speed: 340, // how fast the rocket slides left/right (pixels per second)
+   344→   344→  shotSpeed: 460, // how fast bubbles fly upward
+   345→   345→}
+   346→   346→
+   347→   347→/* ───────────────────────────── tiny helpers ─────────────────────────── */
+   348→   348→const rand = (a: number, b: number) => a + Math.random() * (b - a)
+   349→   349→const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+   350→   350→const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+   351→   351→const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
+   352→   352→
+   353→   353→/* ───────────────────────────── game types ───────────────────────────── */
+   354→   354→type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'playing' | 'levelClear' | 'over' | 'won' | 'bye'
+   355→   355→
+   356→   356→interface Monster {
+   357→   357→  x: number
+   358→   358→  y: number
+   359→   359→  baseX: number
+   360→   360→  r: number
+   361→   361→  color: string
+   362→   362→  type: EnemyType // which silly friend this is
+   363→   363→  move: MoveKind // how it travels down the sky
+   364→   364→  boss: number // -1 = regular friend · otherwise its index in BOSSES
+   365→   365→  hp: number // bubbles still needed to pop it
+   366→   366→  maxHp: number
+   367→   367→  wob: number // wobble timer (side-to-side wiggle)
+   368→   368→  wobSpeed: number
+   369→   369→  drift: number
+   370→   370→  speedMul: number // each friend is a tiny bit faster/slower than its pals
+   371→   371→  blink: number // counts down to the next cute blink
+   372→   372→  vx: number // side speed for 'bounce' & 'drift' movers
+   373→   373→  alpha: number // ghosty visibility (1 = fully visible)
+   374→   374→  hitFlash: number // >0 = just got booped (squishy reaction!)
+   375→   375→  spin: number // 'spinny' rotation angle
+   376→   376→  settled: boolean // boss: has it reached its comfy hover spot yet?
+   377→   377→  targetY: number // boss: the height it hovers at
+   378→   378→}
+   379→   379→
+   380→   380→interface Shot {
+   381→   381→  x: number
+   382→   382→  y: number
+   383→   383→  vy: number
+   384→   384→  r: number
+   385→   385→  kind: 'star' | 'water' | 'heart' | 'rainbow' // each pal shoots their own!
+   386→   386→  wob: number
+   387→   387→}
+   388→   388→
+   389→   389→interface Particle {
+   390→   390→  x: number
+   391→   391→  y: number
+   392→   392→  vx: number
+   393→   393→  vy: number
+   394→   394→  life: number
+   395→   395→  maxLife: number
+   396→   396→  color: string
+   397→   397→  size: number
+   398→   398→  rot: number
+   399→   399→  vr: number
+   400→   400→  kind: 'confetti' | 'sparkle' | 'ring' | 'text'
+   401→   401→  text?: string
+   402→   402→}
+   403→   403→
+   404→   404→interface Cloud {
+   405→   405→  x: number
+   406→   406→  y: number
+   407→   407→  s: number
+   408→   408→  v: number
+   409→   409→}
+   410→   410→
+   411→   411→/* one friendly "Meet a new friend!" pop-up */
+   412→   412→interface IntroInfo {
+   413→   413→  name: string
+   414→   414→  emoji: string
+   415→   415→  hint: string
+   416→   416→  boss?: boolean
+   417→   417→}
+   418→   418→
+   419→   419→interface GameData {
+   420→   420→  state: UIState
+   421→   421→  w: number
+   422→   422→  h: number
+   423→   423→  turbo: boolean // "?turbo" testing mode
+   424→   424→  time: number // total seconds elapsed (for animations)
+   425→   425→  character: CharacterId // the pal you picked on the selection screen
+   426→   426→  player: {
+   427→   427→    x: number
+   428→   428→    tilt: number
+   429→   429→    cool: number
+   430→   430→    surprised: number // >0 = "uh-oh!" face after losing a heart
+   431→   431→    cheer: number // >0 = hip-hip-hooray face when a level is done
+   432→   432→    blink: number // counts down to the next cute blink
+   433→   433→  }
+   434→   434→  targetX: number | null // finger/mouse position while dragging
+   435→   435→  dragging: boolean
+   436→   436→  monsters: Monster[]
+   437→   437→  shots: Shot[]
+   438→   438→  parts: Particle[]
+   439→   439→  clouds: Cloud[]
+   440→   440→  mode: Mode // 'kids' = gentle · 'adults' = tricky
+   441→   441→  level: number // index into the level list of the current mode
+   442→   442→  popped: number // monsters popped this level
+   443→   443→  score: number // total stars collected (across all levels)
+   444→   444→  hearts: number
+   445→   445→  spawnT: number // countdown until the next monster appears
+   446→   446→  bossSpawned: boolean // has this level's big boss arrived yet?
+   447→   447→  seen: Partial<Record<EnemyType, boolean>> // for "Meet a new friend!" pop-ups
+   448→   448→  introQueue: IntroInfo[] // friendly pop-ups waiting their turn
+   449→   449→  introBusy: boolean // is a pop-up on screen right now?
+   450→   450→}
+   451→   451→
+   452→   452→function freshGame(): GameData {
+   453→   453→  // greet you with the pal you played last time (if we can remember them)
+   454→   454→  let savedPal: CharacterId = 'rocky'
+   455→   455→  try {
+   456→   456→    const s = typeof window !== 'undefined' ? localStorage.getItem('bubblePopCharacter') : null
+   457→   457→    if (s === 'rocky' || s === 'dolly' || s === 'bunny' || s === 'zippy') savedPal = s
+   458→   458→  } catch {
+   459→   459→    /* private browsing — no problem */
+   460→   460→  }
+   461→   461→  return {
+   462→   462→    state: 'menu',
+   463→   463→    w: 800,
+   464→   464→    h: 600,
+   465→   465→    turbo: typeof window !== 'undefined' && window.location.search.includes('turbo'),
+   466→   466→    character: savedPal,
+   467→   467→    time: 0,
+   468→   468→    player: { x: 400, tilt: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
+   469→   469→    targetX: null,
+   470→   470→    dragging: false,
+   471→   471→    monsters: [],
+   472→   472→    shots: [],
+   473→   473→    parts: [],
+   474→   474→    clouds: Array.from({ length: 4 }, (_, i) => ({
+   475→   475→      x: rand(0, 900),
+   476→   476→      y: 40 + i * 55 + rand(0, 30),
+   477→   477→      s: rand(0.7, 1.3),
+   478→   478→      v: rand(8, 20), // cloud drift speed
+   479→   479→    })),
+   480→   480→    level: 0,
+   481→   481→    popped: 0,
+   482→   482→    score: 0,
+   483→   483→    hearts: MODES.kids.hearts,
+   484→   484→    spawnT: 0.8,
+   485→   485→    bossSpawned: false,
+   486→   486→    seen: {},
+   487→   487→    introQueue: [],
+   488→   488→    introBusy: false,
+   489→   489→  }
+   490→   490→}
+   491→   491→
+   492→   492→/* Effective goal for the current level (turbo mode shrinks it for testing) */
+   493→   493→const goalOf = (g: GameData) => (g.turbo ? 2 : levelsOf(g.mode)[g.level].goal)
+   494→   494→
+   495→   495→/* How many boops the current level's boss needs (turbo makes it quick too) */
+   496→   496→const bossHpOf = (g: GameData, b: BossConfig) => (g.turbo ? 2 : g.mode === 'adults' ? b.hpAdults : b.hpKids)
+   497→   497→
+   498→   498→/* ═══════════════════════════════════════════════════════════════════════
+   499→   499→   🔊 SOUND ENGINE — every beep is generated with the Web Audio API,
+   500→   500→   so there are no sound files to download. Tweak the numbers freely!
+   501→   501→   ═══════════════════════════════════════════════════════════════════════ */
+   502→   502→class GameAudio {
+   503→   503→  private ctx: AudioContext | null = null
+   504→   504→  private master: GainNode | null = null
+   505→   505→  private musicGain: GainNode | null = null
+   506→   506→  private musicTimer: ReturnType<typeof setInterval> | null = null
+   507→   507→  private step = 0
+   508→   508→  private nextTime = 0
+   509→   509→  private stepDur = 0.25 // one 8th-note; grown-ups mode gets a pepzier tempo
+   510→   510→  muted = false
+   511→   511→
+   512→   512→  /* Create the audio context lazily (browsers require a user gesture first) */
+   513→   513→  init() {
+   514→   514→    if (typeof window === 'undefined') return
+   515→   515→    try {
+   516→   516→      if (!this.ctx) {
+   517→   517→        const AC =
+   518→   518→          window.AudioContext ||
+   519→   519→          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+   520→   520→        this.ctx = new AC()
+   521→   521→        this.master = this.ctx.createGain()
+   522→   522→        this.master.gain.value = this.muted ? 0 : 0.9
+   523→   523→        this.master.connect(this.ctx.destination)
+   524→   524→        this.musicGain = this.ctx.createGain()
+   525→   525→        this.musicGain.gain.value = 0.5 // music a bit quieter than effects
+   526→   526→        this.musicGain.connect(this.master)
+   527→   527→      }
+   528→   528→      if (this.ctx.state === 'suspended') void this.ctx.resume()
+   529→   529→    } catch {
+   530→   530→      /* no audio available — the game still works silently */
+   531→   531→    }
+   532→   532→  }
+   533→   533→
+   534→   534→  setMuted(m: boolean) {
+   535→   535→    this.muted = m
+   536→   536→    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.02)
+   537→   537→  }
+   538→   538→
+   539→   539→  private f(midi: number) {
+   540→   540→    return 440 * Math.pow(2, (midi - 69) / 12)
+   541→   541→  }
+   542→   542→
+   543→   543→  /* One little note with a soft envelope */
+   544→   544→  private tone(o: {
+   545→   545→    freq: number
+   546→   546→    time: number
+   547→   547→    dur: number
+   548→   548→    type?: OscillatorType
+   549→   549→    vol?: number
+   550→   550→    glide?: number
+   551→   551→    dest?: GainNode | null
+   552→   552→  }) {
+   553→   553→    if (!this.ctx || !this.master) return
+   554→   554→    const { freq, time, dur, type = 'sine', vol = 0.2, glide, dest = this.master } = o
+   555→   555→    const t = Math.max(time, this.ctx.currentTime)
+   556→   556→    const osc = this.ctx.createOscillator()
+   557→   557→    const gain = this.ctx.createGain()
+   558→   558→    osc.type = type
+   559→   559→    osc.frequency.setValueAtTime(freq, t)
+   560→   560→    if (glide) osc.frequency.exponentialRampToValueAtTime(glide, t + dur)
+   561→   561→    gain.gain.setValueAtTime(0.0001, t)
+   562→   562→    gain.gain.exponentialRampToValueAtTime(vol, t + 0.015)
+   563→   563→    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+   564→   564→    osc.connect(gain)
+   565→   565→    gain.connect(dest)
+   566→   566→    osc.start(t)
+   567→   567→    osc.stop(t + dur + 0.05)
+   568→   568→  }
+   569→   569→
+   570→   570→  /* ── SOUND EFFECTS ────────────────────────────────────────────────── */
+   571→   571→  click() {
+   572→   572→    this.init()
+   573→   573→    if (!this.ctx) return
+   574→   574→    this.tone({ freq: 750, time: this.ctx.currentTime, dur: 0.07, vol: 0.12, glide: 980 })
+   575→   575→  }
+   576→   576→
+   577→   577→  /* soft bubbly "pew" when shooting */
+   578→   578→  shoot() {
+   579→   579→    this.init()
+   580→   580→    if (!this.ctx) return
+   581→   581→    this.tone({ freq: 340, time: this.ctx.currentTime, dur: 0.11, vol: 0.14, glide: 640 })
+   582→   582→  }
+   583→   583→
+   584→   584→  /* happy musical "pop!" — each pop chimes a different happy note */
+   585→   585→  pop() {
+   586→   586→    this.init()
+   587→   587→    if (!this.ctx) return
+   588→   588→    const t = this.ctx.currentTime
+   589→   589→    const base = pick([523.25, 587.33, 659.25, 783.99, 880])
+   590→   590→    this.tone({ freq: base, time: t, dur: 0.18, type: 'triangle', vol: 0.22 })
+   591→   591→    this.tone({ freq: base * 2, time: t + 0.04, dur: 0.12, vol: 0.09 })
+   592→   592→  }
+   593→   593→
+   594→   594→  /* Every pal has their OWN happy pop! 🎵
+   595→   595→     rocky = bright ding · dolly = watery blub-blub
+   596→   596→     bunny = soft boing  · zippy = arcade bleep-bloop
+   597→   597→     Change the notes freely — sillier is better! */
+   598→   598→  popFor(char: CharacterId) {
+   599→   599→    this.init()
+   600→   600→    if (!this.ctx) return
+   601→   601→    const t = this.ctx.currentTime
+   602→   602→    if (char === 'rocky') {
+   603→   603→      // ⭐ a bright little ding-ding!
+   604→   604→      this.tone({ freq: 784, time: t, dur: 0.14, type: 'triangle', vol: 0.22 })
+   605→   605→      this.tone({ freq: 1568, time: t + 0.04, dur: 0.1, vol: 0.08 })
+   606→   606→    } else if (char === 'dolly') {
+   607→   607→      // 💧 a watery blub-blub (slides up like a droplet)
+   608→   608→      this.tone({ freq: 300, time: t, dur: 0.16, type: 'sine', vol: 0.22, glide: 620 })
+   609→   609→      this.tone({ freq: 520, time: t + 0.07, dur: 0.1, type: 'sine', vol: 0.1, glide: 740 })
+   610→   610→    } else if (char === 'bunny') {
+   611→   611→      // 💗 a soft springy boing
+   612→   612→      this.tone({ freq: 440, time: t, dur: 0.18, type: 'triangle', vol: 0.22, glide: 660 })
+   613→   613→    } else {
+   614→   614→      // 🌈 an arcade bleep-bloop
+   615→   615→      this.tone({ freq: 660, time: t, dur: 0.08, type: 'square', vol: 0.1 })
+   616→   616→      this.tone({ freq: 990, time: t + 0.06, dur: 0.1, type: 'square', vol: 0.08 })
+   617→   617→    }
+   618→   618→  }
+   619→   619→
+   620→   620→  /* gentle "oops" when a monster slips past — friendly, never scary */
+   621→   621→  oops() {
+   622→   622→    this.init()
+   623→   623→    if (!this.ctx) return
+   624→   624→    const t = this.ctx.currentTime
+   625→   625→    this.tone({ freq: 392, time: t, dur: 0.15, type: 'triangle', vol: 0.18 })
+   626→   626→    this.tone({ freq: 311, time: t + 0.16, dur: 0.28, type: 'triangle', vol: 0.18 })
+   627→   627→  }
+   628→   628→
+   629→   629→  /* 😄 tee-hee! A friend giggling after its first boop (Sleepy Cloud) */
+   630→   630→  giggle() {
+   631→   631→    this.init()
+   632→   632→    if (!this.ctx) return
+   633→   633→    const t = this.ctx.currentTime
+   634→   634→    this.tone({ freq: 880, time: t, dur: 0.09, type: 'triangle', vol: 0.15, glide: 1175 })
+   635→   635→    this.tone({ freq: 1175, time: t + 0.1, dur: 0.12, type: 'triangle', vol: 0.15, glide: 1568 })
+   636→   636→  }
+   637→   637→
+   638→   638→  /* ✨ happy chime for the "Meet a new friend!" pop-up */
+   639→   639→  newFriend() {
+   640→   640→    this.init()
+   641→   641→    if (!this.ctx) return
+   642→   642→    const t = this.ctx.currentTime
+   643→   643→    ;[523.25, 659.25, 783.99].forEach((f, i) =>
+   644→   644→      this.tone({ freq: f, time: t + i * 0.09, dur: 0.15, type: 'triangle', vol: 0.16 })
+   645→   645→    )
+   646→   646→  }
+   647→   647→
+   648→   648→  /* squishy boing when a boss gets booped */
+   649→   649→  bossHit() {
+   650→   650→    this.init()
+   651→   651→    if (!this.ctx) return
+   652→   652→    this.tone({ freq: 220, time: this.ctx.currentTime, dur: 0.16, type: 'triangle', vol: 0.2, glide: 392 })
+   653→   653→  }
+   654→   654→
+   655→   655→  /* 🎆 happy firework pops when a boss is defeated! */
+   656→   656→  bossDown() {
+   657→   657→    this.init()
+   658→   658→    if (!this.ctx) return
+   659→   659→    const t = this.ctx.currentTime
+   660→   660→    const notes = [523.25, 659.25, 783.99, 1046.5]
+   661→   661→    notes.forEach((f, i) => {
+   662→   662→      this.tone({ freq: f, time: t + i * 0.12, dur: 0.22, type: 'triangle', vol: 0.2 })
+   663→   663→      this.tone({ freq: f * 2, time: t + i * 0.12 + 0.03, dur: 0.12, vol: 0.07 })
+   664→   664→    })
+   665→   665→  }
+   666→   666→
+   667→   667→  /* little fanfare when a level is complete */
+   668→   668→  levelUp() {
+   669→   669→    this.init()
+   670→   670→    if (!this.ctx) return
+   671→   671→    const t = this.ctx.currentTime
+   672→   672→    const notes = [72, 76, 79, 84] // C5 E5 G5 C6
+   673→   673→    notes.forEach((n, i) =>
+   674→   674→      this.tone({ freq: this.f(n), time: t + i * 0.1, dur: i === 3 ? 0.45 : 0.18, type: 'triangle', vol: 0.2 })
+   675→   675→    )
+   676→   676→  }
+   677→   677→
+   678→   678→  /* BIG happy fanfare for finishing all three levels */
+   679→   679→  win() {
+   680→   680→    this.init()
+   681→   681→    if (!this.ctx) return
+   682→   682→    const t = this.ctx.currentTime
+   683→   683→    const seq: Array<[number, number, number]> = [
+   684→   684→      [72, 0, 0.14],
+   685→   685→      [76, 0.12, 0.14],
+   686→   686→      [79, 0.24, 0.14],
+   687→   687→      [84, 0.36, 0.3],
+   688→   688→      [79, 0.6, 0.12],
+   689→   689→      [84, 0.72, 0.14],
+   690→   690→      [88, 0.9, 0.6],
+   691→   691→    ]
+   692→   692→    seq.forEach(([n, dt, dur]) =>
+   693→   693→      this.tone({ freq: this.f(n), time: t + dt, dur, type: 'triangle', vol: 0.2 })
+   694→   694→    )
+   695→   695→  }
+   696→   696→
+   697→   697→  /* soft, encouraging jingle for "Great try!" — no sad trombones here */
+   698→   698→  gameOverJingle() {
+   699→   699→    this.init()
+   700→   700→    if (!this.ctx) return
+
+[showing lines 1-700 of 2002; use offset=701 with limit to continue reading]

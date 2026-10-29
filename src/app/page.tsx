@@ -7,6 +7,8 @@
    ✨ WHAT'S INSIDE (everything lives in THIS ONE FILE!)
       • A cute rocket you steer at the bottom of the screen
       • 6 silly enemy friends & a big goofy BOSS at the end of every level!
+      • 6 gift power-ups float down: 🌈 rainbow shots · 🫧 shield · 🐌 slow-mo
+        · 💗 heart refill · ⭐ star magnet · 💥 GIANT POP (SETUP 2⅚ · POWER-UPS)
       • Pop them with bubbles & stars → confetti + sparkles + happy sounds!
       • 5 hearts, 3 easy levels, reward screens, cheerful music, mute button
       • Press START GAME → pick Kids or Grown-Ups → choose your pal → pop!
@@ -24,6 +26,7 @@
       3. CHANGE CHARACTERS ... look for "SETUP 2½ · CHARACTERS" + "drawCharacter()"
       4. CHANGE SOUNDS ....... look for the "GameAudio" class
       5. ADD NEW ENEMIES ..... look for "SETUP 2¾ · ENEMY FRIENDS" below
+      6. ADD POWER-UPS ...... look for "SETUP 2⅚ · POWER-UPS" below
       Every important number has a friendly comment next to it. Have fun! 💛
 
    🧪 TESTING CHEAT: add "?turbo" to the URL to make friends & bosses appear
@@ -335,6 +338,92 @@ const CHARACTERS: Record<CharacterId, CharacterConfig> = {
 
 const CHARACTER_LIST: CharacterId[] = ['rocky', 'dolly', 'bunny', 'zippy']
 
+/* ───────────────────────────────────────────────────────────────────────────
+   SETUP 2⅚ · POWER-UPS 🎁 — happy gifts that float down from the sky!
+   ───────────────────────────────────────────────────────────────────────────
+   HOW THEY WORK: every little while a gift bubble drifts down from the top.
+   Touch it with your pal — or pop it with a bubble — to collect it. Missed
+   gifts gently fade away at the bottom; they can NEVER hurt you.
+
+   HOW TO ADD YOUR OWN NEW POWER-UP (grown-ups & kids together!):
+     1. Add a block below — name, emoji, color & numbers.
+     2. duration > 0 → it becomes a TIMED power with a countdown ring near
+        the hearts (only ONE timed power can be on at a time).
+     3. duration = 0 → it works instantly (like the Heart Refill).
+     4. Add what it DOES inside collectPowerUp() — search "POWER-UP plumbing".
+   ─────────────────────────────────────────────────────────────────────────── */
+type PowerUpType = 'rainbow' | 'shield' | 'slow' | 'heart' | 'magnet' | 'giant'
+
+interface PowerUpConfig {
+  name: string // shown in the "you got a gift!" pop-up
+  emoji: string // the friendly symbol inside the bubble
+  tip: string // one friendly line: what it does
+  duration: number // seconds it lasts (0 = works instantly!)
+  weight: number // how often it drops (bigger = more common)
+  color: string // its glow color
+}
+
+const POWERUPS: Record<PowerUpType, PowerUpConfig> = {
+  rainbow: {
+    name: 'Rainbow Bubbles',
+    emoji: '🌈',
+    tip: 'Shoot lots at once!',
+    duration: 8, // 8 seconds of triple-bubble fans
+    weight: 2,
+    color: '#b18aff',
+  },
+  shield: {
+    name: 'Bubble Shield',
+    emoji: '🫧',
+    tip: 'Blocks one boop — pop!',
+    duration: 0, // stays until it saves you once, then pops away
+    weight: 2,
+    color: '#4fc3f7', // a shiny blue bubble!
+  },
+  slow: {
+    name: 'Slow Motion',
+    emoji: '🐌',
+    tip: 'Everyone floats in slow-mo!',
+    duration: 6, // 6 dreamy seconds at half speed
+    weight: 1.5,
+    color: '#c9a6ff',
+  },
+  heart: {
+    name: 'Heart Refill',
+    emoji: '💗',
+    tip: 'Get a heart back!',
+    duration: 0, // works instantly (up to the maximum!)
+    weight: 1, // drops extra often when hearts are low!
+    color: '#ff8fb1',
+  },
+  magnet: {
+    name: 'Star Magnet',
+    emoji: '⭐',
+    tip: 'Gifts & stars fly to you!',
+    duration: 8, // 8 seconds of magical pulling
+    weight: 1.5,
+    color: '#ffd93d',
+  },
+  giant: {
+    name: 'Giant Pop',
+    emoji: '💥',
+    tip: 'Pops EVERYONE at once!',
+    duration: 0, // one super-sized bubble, right away!
+    weight: 1,
+    color: '#7fd8be',
+  },
+}
+
+/* power-up tuning knobs (all in one cozy place!) */
+const PU = {
+  every: [15, 25] as [number, number], // seconds between gifts (levels 2 & 3)
+  everyLevel1: [10, 16] as [number, number], // level 1 gets gifts MORE often
+  fallSpeed: 55, // how fast gifts float down (pixels per second)
+  starChance: 0.12, // chance a popped friend leaves a bonus star ⭐
+  starValue: 2, // bonus stars collected per star
+  bossDamage: 3, // Giant Pop takes this many star-points off a boss
+}
+
 /* Testing cheat: add "?turbo" to the URL and monsters appear crazy fast
    and each level only needs 2 pops (handy for grown-ups checking rewards).
    It is detected inside the game (client-side only) to keep SSR happy. */
@@ -381,9 +470,11 @@ interface Shot {
   x: number
   y: number
   vy: number
+  vx?: number // side speed (rainbow fans fly at a slight angle!)
   r: number
   kind: 'star' | 'water' | 'heart' | 'rainbow' // each pal shoots their own!
   wob: number
+  giant?: boolean // 💥 the one & only GIANT POP bubble!
 }
 
 interface Particle {
@@ -408,12 +499,44 @@ interface Cloud {
   v: number
 }
 
+/* 🎁 a gift power-up floating down from the top of the sky */
+interface PowerUpDrop {
+  x: number
+  baseX: number // the middle it sways around
+  y: number
+  vy: number // float-down speed
+  r: number // bubble size
+  type: PowerUpType // which gift it is
+  phase: number // sway wiggle offset
+  alpha: number // fades out gently at the bottom
+}
+
+/* ⭐ a tiny bonus star that tumbles out of a popped friend */
+interface StarDrop {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  rot: number
+  vr: number
+  alpha: number
+}
+
+/* the ONE timed power-up that is running right now */
+interface ActivePower {
+  type: PowerUpType
+  t: number // seconds left
+  max: number // seconds it started with
+  startedAt: number // g.time when picked (restarts the HUD ring)
+}
+
 /* one friendly "Meet a new friend!" pop-up */
 interface IntroInfo {
   name: string
   emoji: string
   hint: string
   boss?: boolean
+  power?: boolean // a "you got a POWER-UP!" pop-up instead
 }
 
 interface GameData {
@@ -447,6 +570,13 @@ interface GameData {
   seen: Partial<Record<EnemyType, boolean>> // for "Meet a new friend!" pop-ups
   introQueue: IntroInfo[] // friendly pop-ups waiting their turn
   introBusy: boolean // is a pop-up on screen right now?
+  powerups: PowerUpDrop[] // gift bubbles floating down 🎁
+  starDrops: StarDrop[] // little bonus stars tumbling from popped friends ⭐
+  active: ActivePower | null // the one timed power-up running right now
+  shield: boolean // Bubble Shield ready? (blocks one hit 🫧)
+  puSpawnT: number // countdown until the next power-up gift appears
+  seenPower: Partial<Record<PowerUpType, boolean>> // first-time gift pop-ups
+  et: number // "enemy time" — crawls at half speed during Slow Motion 🐌
 }
 
 function freshGame(): GameData {
@@ -486,6 +616,13 @@ function freshGame(): GameData {
     seen: {},
     introQueue: [],
     introBusy: false,
+    powerups: [],
+    starDrops: [],
+    active: null,
+    shield: false,
+    puSpawnT: 7,
+    seenPower: {},
+    et: 0,
   }
 }
 
@@ -645,6 +782,37 @@ class GameAudio {
     )
   }
 
+  /* 🎁 a bright happy "you got a gift!" arpeggio */
+  powerUp() {
+    this.init()
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    ;[659.25, 783.99, 1046.5].forEach((f, i) =>
+      this.tone({ freq: f, time: t + i * 0.07, dur: 0.14, type: 'triangle', vol: 0.18 })
+    )
+    this.tone({ freq: 2093, time: t + 0.21, dur: 0.12, vol: 0.07 })
+  }
+
+  /* 🫧 happy "po-pof!" — the Bubble Shield pops away after saving you */
+  shieldPop() {
+    this.init()
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    this.tone({ freq: 520, time: t, dur: 0.1, type: 'sine', vol: 0.2, glide: 300 })
+    this.tone({ freq: 880, time: t + 0.08, dur: 0.16, type: 'triangle', vol: 0.16, glide: 1320 })
+  }
+
+  /* 💥 one BIG soft boom for the Giant Pop — exciting, never scary */
+  giantPop() {
+    this.init()
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    this.tone({ freq: 180, time: t, dur: 0.4, type: 'sine', vol: 0.3, glide: 70 })
+    ;[523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) =>
+      this.tone({ freq: f, time: t + 0.08 + i * 0.06, dur: 0.2, type: 'triangle', vol: 0.16 })
+    )
+  }
+
   /* squishy boing when a boss gets booped */
   bossHit() {
     this.init()
@@ -752,6 +920,12 @@ function circle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) 
   ctx.beginPath()
   ctx.arc(x, y, r, 0, Math.PI * 2)
   ctx.fill()
+}
+
+/* turn '#ff8fb1' into 'rgba(255,143,177,0.35)' — for soft glows! */
+function withAlpha(hex: string, a: number) {
+  const n = parseInt(hex.slice(1), 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`
 }
 
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -951,6 +1125,27 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: GameData) {
   const blink = p.blink < 0 && p.blink > -0.15
   drawCharacter(ctx, g.character, expr, g.time, blink)
   ctx.restore()
+  // 🫧 the Bubble Shield — a soft shiny bubble that blocks one hit!
+  if (g.shield) {
+    const pr = 50 + Math.sin(g.time * 3) * 3 // gently breathing
+    ctx.save()
+    ctx.translate(p.x, py)
+    ctx.beginPath()
+    ctx.arc(0, 0, pr, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(150,220,255,0.22)'
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(80,190,240,0.9)'
+    ctx.lineWidth = 3
+    ctx.stroke()
+    // glossy shine
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'
+    ctx.lineWidth = 4
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    ctx.arc(0, 0, pr - 7, -2.2, -1.4)
+    ctx.stroke()
+    ctx.restore()
+  }
 }
 
 /* 🎨 THE FOUR PALS — every friend is drawn centered at (0,0), about 85px tall.
@@ -1463,6 +1658,27 @@ function drawBossBadge(ctx: CanvasRenderingContext2D, m: Monster) {
 /* 🫧 THE FOUR BUBBLES — each pal fires their own!
    star ⭐ (Rocky) · water 💧 (Dolly) · heart 💗 (Bunny) · rainbow 🌈 (Zippy) */
 function drawShot(ctx: CanvasRenderingContext2D, s: Shot, time: number) {
+  /* 💥 the GIANT POP — a huge sparkly bubble with stars spinning around it! */
+  if (s.giant) {
+    const rr = s.r + Math.sin(time * 9) * 3
+    const hue = (time * 300) % 360
+    ctx.beginPath()
+    ctx.arc(s.x, s.y, rr, 0, Math.PI * 2)
+    ctx.fillStyle = `hsla(${hue}, 90%, 88%, 0.55)`
+    ctx.fill()
+    ctx.strokeStyle = `hsl(${hue}, 85%, 58%)`
+    ctx.lineWidth = 4
+    ctx.stroke()
+    for (let i = 0; i < 3; i++) {
+      const a = time * 3 + i * 2.1
+      starPath(ctx, s.x + Math.cos(a) * (rr + 11), s.y + Math.sin(a) * (rr + 11), 6.5, 2.7, 5, a)
+      ctx.fillStyle = '#ffd93d'
+      ctx.fill()
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    circle(ctx, s.x - rr * 0.35, s.y - rr * 0.35, 4.5)
+    return
+  }
   if (s.kind === 'star') {
     // ⭐ Rocky's golden star bubble
     starPath(ctx, s.x, s.y, s.r + 2, (s.r + 2) * 0.45, 5, s.wob * 2 - Math.PI / 2)
@@ -1506,6 +1722,54 @@ function drawShot(ctx: CanvasRenderingContext2D, s: Shot, time: number) {
     ctx.fillStyle = 'rgba(255,255,255,0.9)'
     circle(ctx, s.x - 3.5, s.y - 3.5, 2.8)
   }
+}
+
+/* 🎁 draw a gift power-up: a big glowing bubble with a friendly symbol
+   inside — bright, bubbly & impossible to find scary! */
+function drawPowerUp(ctx: CanvasRenderingContext2D, u: PowerUpDrop, time: number) {
+  const cfg = POWERUPS[u.type]
+  ctx.save()
+  ctx.globalAlpha = clamp(u.alpha, 0, 1)
+  // soft glow halo that breathes gently
+  ctx.beginPath()
+  ctx.arc(u.x, u.y, u.r + 9 + Math.sin(time * 3 + u.phase) * 3, 0, Math.PI * 2)
+  ctx.fillStyle = withAlpha(cfg.color, 0.22)
+  ctx.fill()
+  // the shiny bubble
+  ctx.beginPath()
+  ctx.arc(u.x, u.y, u.r, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.fill()
+  ctx.strokeStyle = cfg.color
+  ctx.lineWidth = 3
+  ctx.stroke()
+  // the friendly symbol inside (emoji = the same everywhere!)
+  ctx.font = `${Math.round(u.r * 1.15)}px 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(cfg.emoji, u.x, u.y + 2)
+  // a little golden sparkle orbiting the gift
+  const a = time * 2 + u.phase
+  starPath(ctx, u.x + Math.cos(a) * (u.r + 8), u.y + Math.sin(a) * (u.r + 8), 6, 2.4, 5, a)
+  ctx.fillStyle = '#ffd93d'
+  ctx.fill()
+  ctx.restore()
+}
+
+/* ⭐ a tiny bonus star tumbling down — catch it for extra stars! */
+function drawStarDrop(ctx: CanvasRenderingContext2D, st: StarDrop) {
+  ctx.save()
+  ctx.globalAlpha = clamp(st.alpha, 0, 1)
+  ctx.fillStyle = 'rgba(255,217,61,0.3)'
+  circle(ctx, st.x, st.y, 13)
+  starPath(ctx, st.x, st.y, 11, 4.7, 5, st.rot)
+  ctx.fillStyle = '#ffd93d'
+  ctx.fill()
+  ctx.strokeStyle = '#e8a800'
+  ctx.lineWidth = 2
+  ctx.lineJoin = 'round'
+  ctx.stroke()
+  ctx.restore()
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1650,10 +1914,20 @@ function drawParticles(ctx: CanvasRenderingContext2D, g: GameData) {
 /* everything currently on screen, painted in the right order */
 function render(ctx: CanvasRenderingContext2D, g: GameData) {
   drawBackground(ctx, g)
+  for (const st of g.starDrops) drawStarDrop(ctx, st)
   for (const m of g.monsters) drawEnemy(ctx, m, g.time)
+  for (const u of g.powerups) drawPowerUp(ctx, u, g.time)
   for (const s of g.shots) drawShot(ctx, s, g.time)
   drawPlayer(ctx, g)
   drawParticles(ctx, g)
+  // 🐌 Slow Motion dreamy glow — a soft sleepy ring around the edges
+  if (g.active?.type === 'slow') {
+    const grad = ctx.createRadialGradient(g.w / 2, g.h / 2, g.h * 0.18, g.w / 2, g.h / 2, g.h * 0.72)
+    grad.addColorStop(0, 'rgba(255,255,255,0)')
+    grad.addColorStop(1, 'rgba(205,190,255,0.30)')
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, g.w, g.h)
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1715,6 +1989,9 @@ export default function Home() {
     mode: 'kids' as Mode,
     character: 'rocky' as CharacterId,
     bossActive: false,
+    shield: false,
+    powerType: null as PowerUpType | null,
+    powerStamp: 0,
   })
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
@@ -1775,26 +2052,33 @@ export default function Home() {
         const goal = goalOf(g)
         const maxHearts = MODES[g.mode].hearts
         const bossActive = g.monsters.some((m) => m.boss >= 0)
-        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode && prev.character === g.character && prev.bossActive === bossActive)
+        const powerType = g.active?.type ?? null
+        const powerStamp = g.active?.startedAt ?? 0
+        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode && prev.character === g.character && prev.bossActive === bossActive && prev.shield === g.shield && prev.powerType === powerType && prev.powerStamp === powerStamp)
           return prev
-        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode, character: g.character, bossActive }
+        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode, character: g.character, bossActive, shield: g.shield, powerType, powerStamp }
       })
     }
 
-    /* 🫧 fire your pal's special bubble! (star / water / heart / rainbow) */
+    /* 🫧 fire your pal's special bubble! (star / water / heart / rainbow)
+       🌈 with the Rainbow Bubbles power, every shot is a fan of THREE! */
     const shootNow = () => {
       if (g.state !== 'playing' || g.player.cool > 0) return
       g.player.cool = MODES[g.mode].shootCooldown
       const kind = CHARACTERS[g.character].bubble // every pal fires their own!
       const py = g.h - 96
-      g.shots.push({
-        x: g.player.x,
-        y: py - 44,
-        vy: -PLAYER.shotSpeed,
-        r: kind === 'star' ? 12 : kind === 'heart' ? 11 : 10,
-        kind,
-        wob: rand(0, 6),
-      })
+      const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
+      for (const ang of fan) {
+        g.shots.push({
+          x: g.player.x,
+          y: py - 44,
+          vy: -PLAYER.shotSpeed * Math.cos(ang),
+          vx: PLAYER.shotSpeed * Math.sin(ang),
+          r: kind === 'star' ? 12 : kind === 'heart' ? 11 : 10,
+          kind,
+          wob: rand(0, 6),
+        })
+      }
       audio.shoot()
     }
 
@@ -1805,6 +2089,9 @@ export default function Home() {
       g.shots.length = 0
       g.spawnT = 0.6
       g.bossSpawned = false // every level gets its own big pal at the end!
+      g.powerups.length = 0 // fresh sky, fresh gifts!
+      g.starDrops.length = 0
+      g.puSpawnT = g.level === 0 ? rand(5, 9) : rand(8, 13) // first gift comes soon
       g.introQueue.length = 0 // drop any pop-ups that are still waiting
       g.player.x = g.w / 2
       g.player.cool = 0
@@ -1861,6 +2148,9 @@ export default function Home() {
       g.score = 0
       g.hearts = MODES[g.mode].hearts
       g.seen = {} // every new playthrough re-introduces the friends 👋
+      g.seenPower = {} // ...and the power-up how-to pop-ups too! 🎁
+      g.active = null
+      g.shield = false
       beginLevel()
     }
 
@@ -1877,6 +2167,10 @@ export default function Home() {
       g.state = 'menu'
       g.monsters.length = 0
       g.shots.length = 0
+      g.powerups.length = 0
+      g.starDrops.length = 0
+      g.active = null
+      g.shield = false
       audio.stopMusic()
       setUi('menu')
       syncHud()
@@ -1895,6 +2189,10 @@ export default function Home() {
       audio.click()
       g.monsters.length = 0
       g.shots.length = 0
+      g.powerups.length = 0
+      g.starDrops.length = 0
+      g.active = null
+      g.shield = false
       g.state = 'bye'
       setUi('bye')
     }
@@ -1962,6 +2260,159 @@ export default function Home() {
         g.introBusy = false
         showNextIntro() // is another friend waiting in line?
       }, 2600)
+    }
+
+    /* ════════ 🎁 POWER-UP plumbing — gifts, bonus stars & the GIANT POP ════════
+       Everything a collected gift DOES lives right here, in one cozy spot. */
+
+    /* 👑 the big pal is popped — fireworks & a big star bonus!
+       (used by bubble boops AND by the Giant Pop) */
+    const defeatBoss = (j: number) => {
+      const m = g.monsters[j]
+      const b = BOSSES[m.boss]
+      g.monsters.splice(j, 1)
+      burst(g, m.x, m.y, m.color)
+      fireworks(g)
+      g.score += b.bonus
+      addText(g, m.x, m.y - 46, `+${b.bonus} ⭐ BONUS!`, '#e8a800', 24)
+      audio.bossDown()
+      completeLevel()
+    }
+
+    /* ⭐ a bonus star was caught — sparkle & score! */
+    const collectStar = (st: StarDrop) => {
+      g.score += PU.starValue
+      audio.pop()
+      addText(g, st.x, st.y - 8, `+${PU.starValue}⭐`, '#e8a800', 17)
+      for (let k = 0; k < 6; k++) {
+        g.parts.push({
+          x: st.x, y: st.y,
+          vx: rand(-90, 90), vy: rand(-130, -20),
+          life: rand(0.3, 0.6), maxLife: 0.6,
+          color: pick(['#fff8c9', '#ffd93d', '#ffffff']),
+          size: rand(2, 4), rot: 0, vr: rand(-5, 5), kind: 'sparkle',
+        })
+      }
+    }
+
+    /* hearts are low? the Heart Refill drops much more often 💗
+       hearts are full? it almost never drops (no wasted gifts!) */
+    const heartWeight = () => (g.hearts <= 2 ? 3 : g.hearts >= MODES[g.mode].hearts ? 0.25 : 1)
+
+    /* which gift floats down next? a friendly weighted pick */
+    const pickPowerType = (): PowerUpType => {
+      const keys = Object.keys(POWERUPS) as PowerUpType[]
+      const wOf = (k: PowerUpType) => POWERUPS[k].weight * (k === 'heart' ? heartWeight() : 1)
+      let total = 0
+      for (const k of keys) total += wOf(k)
+      let roll = Math.random() * total
+      for (const k of keys) {
+        roll -= wOf(k)
+        if (roll <= 0) return k
+      }
+      return 'shield'
+    }
+
+    /* a gift bubble appears at the top & drifts down ever so gently */
+    const spawnPowerUp = () => {
+      const type = pickPowerType()
+      const x = rand(70, g.w - 70)
+      g.powerups.push({
+        x,
+        baseX: x,
+        y: -34,
+        vy: PU.fallSpeed * rand(0.9, 1.1),
+        r: 24,
+        type,
+        phase: rand(0, Math.PI * 2),
+        alpha: 1,
+      })
+    }
+
+    /* COLLECTED! happy sound · sparkles · your pal does a little cheer 🥳 */
+    const collectPowerUp = (type: PowerUpType, x: number, y: number) => {
+      const cfg = POWERUPS[type]
+      audio.powerUp()
+      for (let i = 0; i < 10; i++) {
+        g.parts.push({
+          x, y,
+          vx: rand(-120, 120), vy: rand(-170, -20),
+          life: rand(0.4, 0.85), maxLife: 0.85,
+          color: pick(['#fff8c9', '#ffd93d', '#ffffff', cfg.color]),
+          size: rand(2.5, 5),
+          rot: rand(0, 6), vr: rand(-6, 6),
+          kind: 'sparkle',
+        })
+      }
+      g.player.cheer = 1.1 // a little hip-hip-hooray bounce!
+      addText(g, clamp(x, 80, g.w - 80), y - 26, `${cfg.emoji} ${cfg.name}!`, cfg.color, 20)
+      if (type === 'heart') {
+        const maxHearts = MODES[g.mode].hearts
+        if (g.hearts < maxHearts) {
+          g.hearts++ // one heart back — up to the maximum!
+          addText(g, g.player.x, g.h - 170, '+1 💗', '#ff8fb1', 22)
+        } else {
+          addText(g, g.player.x, g.h - 170, 'Hearts full!', '#ff8fb1', 18)
+        }
+      } else if (type === 'shield') {
+        g.shield = true // a soft bubble that blocks one hit
+      } else if (type === 'giant') {
+        launchGiant()
+      } else {
+        // timed powers: only ONE at a time — a new gift replaces the old one!
+        g.active = { type, t: cfg.duration, max: cfg.duration, startedAt: g.time }
+      }
+      // first time ever getting this gift? show the friendly how-to pop-up!
+      if (!g.seenPower[type]) {
+        g.seenPower[type] = true
+        g.introQueue.push({ name: cfg.name, emoji: cfg.emoji, hint: cfg.tip, power: true })
+        showNextIntro()
+      }
+      syncHud()
+    }
+
+    /* 💥 the Giant Pop: one super-sized bubble rises from your pal… */
+    const launchGiant = () => {
+      g.shots.push({
+        x: g.player.x,
+        y: g.h - 150,
+        vy: -PLAYER.shotSpeed * 0.62,
+        r: 27,
+        kind: 'rainbow',
+        wob: 0,
+        giant: true,
+      })
+    }
+
+    /* …and BURSTS into a giant confetti party that pops EVERY friend on
+       screen at once! (Big bosses only lose a few star points — no shortcuts
+       past the level's big pal!) */
+    const giantBurst = (gx: number, gy: number) => {
+      audio.giantPop()
+      fireworks(g)
+      addText(g, gx, gy, 'GIANT POP!', '#b18aff', 30)
+      for (let j = g.monsters.length - 1; j >= 0; j--) {
+        const m = g.monsters[j]
+        if (m.boss >= 0) {
+          m.hp -= PU.bossDamage // bosses only lose a few star points!
+          m.hitFlash = 0.35
+          addText(g, m.x + rand(-20, 20), m.y - m.r * 0.5, pick(['Boing!', 'Oof!', 'Wow!']), '#f278ab', 22)
+          if (m.hp <= 0) {
+            defeatBoss(j)
+            return // completeLevel handled the whole celebration!
+          }
+          continue
+        }
+        burst(g, m.x, m.y, m.color)
+        g.popped++
+        g.score++
+        g.monsters.splice(j, 1)
+      }
+      // did the giant pop finish the goal? then here comes the boss!
+      const goal = goalOf(g)
+      const hasBoss = g.monsters.some((mm) => mm.boss >= 0)
+      if (g.popped >= goal && !g.bossSpawned && !hasBoss) spawnBoss()
+      syncHud()
     }
 
     /* 👾 make a new silly friend at the top of the sky!
@@ -2064,6 +2515,8 @@ export default function Home() {
     /* ════════ THE HEARTBEAT: runs ~60 times per second ════════ */
     const update = (dt: number) => {
       g.time += dt
+      // 🐌 Slow Motion: enemy-time crawls at half speed while the glow is on!
+      g.et += dt * (g.active?.type === 'slow' ? 0.5 : 1)
       // pal mood timers tick even behind menus (so the cheer keeps dancing!)
       if (g.player.surprised > 0) g.player.surprised -= dt
       if (g.player.cheer > 0) g.player.cheer -= dt
@@ -2107,11 +2560,22 @@ export default function Home() {
         g.spawnT = gap
       }
 
-      /* ── enemy friends floating down — each with their own silly move! ── */
+      /* ── 🎁 gift power-ups drift down every little while ──
+         Level 1 gets them MORE often, so little kids feel helped! */
+      g.puSpawnT -= dt
+      if (g.puSpawnT <= 0 && g.powerups.length < 2) {
+        spawnPowerUp()
+        const range = g.level === 0 ? PU.everyLevel1 : PU.every
+        g.puSpawnT = rand(range[0], range[1]) * (g.turbo ? 0.25 : 1)
+      }
+
+      /* ── enemy friends floating down — each with their own silly move! ──
+         🐌 during Slow Motion everything in here runs at HALF speed! */
+      const slowF = g.active?.type === 'slow' ? 0.5 : 1
       const fall = lerp(L.fallSpeed, L.fallSpeedMax, progress)
       for (let i = g.monsters.length - 1; i >= 0; i--) {
         const m = g.monsters[i]
-        m.wob += m.wobSpeed * dt
+        m.wob += m.wobSpeed * dt * slowF
         m.blink -= dt
         if (m.blink < -0.15) m.blink = rand(2, 4)
         if (m.hitFlash > 0) m.hitFlash -= dt
@@ -2127,24 +2591,24 @@ export default function Home() {
             }
           } else {
             const b = BOSSES[m.boss]
-            m.y = m.targetY + Math.sin(g.time * b.swingSpeed * 1.4) * 12 // gentle bob
-            m.x = g.w / 2 + Math.sin(g.time * b.swingSpeed) * g.w * b.swingAmp // side to side
+            m.y = m.targetY + Math.sin(g.et * b.swingSpeed * 1.4) * 12 // gentle bob
+            m.x = g.w / 2 + Math.sin(g.et * b.swingSpeed) * g.w * b.swingAmp // side to side
           }
           continue
         }
 
         switch (m.move) {
           case 'straight': // Blobby: floats slowly straight down
-            m.y += fall * m.speedMul * dt
+            m.y += fall * m.speedMul * slowF * dt
             break
           case 'zigzag': // Zigzag Zoe: gentle side-to-side wiggles
-            m.y += fall * m.speedMul * dt
+            m.y += fall * m.speedMul * slowF * dt
             m.x = clamp(m.baseX + Math.sin(m.wob) * m.drift, m.r, g.w - m.r)
             break
           case 'bounce': {
             // Bouncy Bob: bounces off the screen edges while slowly sinking
-            m.y += fall * m.speedMul * dt
-            m.x += m.vx * dt
+            m.y += fall * m.speedMul * slowF * dt
+            m.x += m.vx * dt * slowF
             if (m.x < m.r) {
               m.x = m.r
               m.vx = Math.abs(m.vx)
@@ -2156,26 +2620,43 @@ export default function Home() {
             break
           }
           case 'spin': // Spinny Spike: twirls & drifts down a bit faster
-            m.y += fall * m.speedMul * dt
+            m.y += fall * m.speedMul * slowF * dt
             m.x = clamp(m.baseX + Math.sin(m.wob) * m.drift * 0.5, m.r, g.w - m.r)
-            m.spin += dt * 4.5
+            m.spin += dt * 4.5 * slowF
             break
           case 'drift': // Sleepy Cloud: drifts across the whole sky (wraps around)
-            m.y += fall * m.speedMul * dt
-            m.x += m.vx * dt
+            m.y += fall * m.speedMul * slowF * dt
+            m.x += m.vx * dt * slowF
             if (m.x < -m.r) m.x = g.w + m.r
             if (m.x > g.w + m.r) m.x = -m.r
             break
           case 'fade': // Sneaky Ghosty: peek-a-boo! fades in & out
-            m.y += fall * m.speedMul * dt
+            m.y += fall * m.speedMul * slowF * dt
             m.x = clamp(m.baseX + Math.sin(m.wob) * m.drift * 0.6, m.r, g.w - m.r)
-            m.alpha = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(g.time * 1.7 + m.wob))
+            m.alpha = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(g.et * 1.7 + m.wob))
             break
         }
 
         if (m.y - m.r > g.h - 14) {
           g.monsters.splice(i, 1)
-          loseHeart(m)
+          if (g.shield) {
+            // 🫧 the Bubble Shield pops with a happy sound & saves the heart!
+            g.shield = false
+            audio.shieldPop()
+            addText(g, clamp(m.x, 60, g.w - 60), g.h - 140, 'Shield saved you!', '#3fa8d8', 20)
+            for (let k = 0; k < 10; k++) {
+              g.parts.push({
+                x: g.player.x, y: g.h - 120,
+                vx: rand(-150, 150), vy: rand(-180, -20),
+                life: rand(0.4, 0.8), maxLife: 0.8,
+                color: pick(['#bfe9ff', '#ffffff', '#8fd8ff']),
+                size: rand(3, 5), rot: 0, vr: rand(-5, 5), kind: 'sparkle',
+              })
+            }
+            syncHud()
+          } else {
+            loseHeart(m)
+          }
           if (g.state !== 'playing') return
         }
       }
@@ -2184,9 +2665,65 @@ export default function Home() {
       for (let i = g.shots.length - 1; i >= 0; i--) {
         const s = g.shots[i]
         s.y += s.vy * dt
+        s.x += (s.vx ?? 0) * dt // rainbow fans fly at a slight angle!
         s.wob += dt * 6
         s.x += Math.sin(s.wob) * 9 * dt
         if (s.y < -30) {
+          g.shots.splice(i, 1)
+          continue
+        }
+
+        /* 💥 the GIANT POP bubble — it bursts when it bumps into anything
+              (or drifts near the top) and pops EVERY friend on screen! */
+        if (s.giant) {
+          let bump = s.y < g.h * 0.3
+          for (const m of g.monsters) {
+            const dx = s.x - m.x
+            const dy = s.y - m.y
+            const rr = m.r + s.r
+            if (dx * dx + dy * dy < rr * rr) {
+              bump = true
+              break
+            }
+          }
+          if (bump) {
+            g.shots.splice(i, 1)
+            giantBurst(s.x, s.y)
+            if (g.state !== 'playing') return
+          }
+          continue
+        }
+
+        /* 🎁 bubbles can also pop gifts open… */
+        let got = false
+        for (let j = g.powerups.length - 1; j >= 0; j--) {
+          const u = g.powerups[j]
+          const dx = s.x - u.x
+          const dy = s.y - u.y
+          const rr = u.r + s.r
+          if (dx * dx + dy * dy < rr * rr) {
+            g.powerups.splice(j, 1)
+            collectPowerUp(u.type, u.x, u.y)
+            got = true
+            break
+          }
+        }
+        /* …and catch bonus stars! ⭐ */
+        if (!got) {
+          for (let j = g.starDrops.length - 1; j >= 0; j--) {
+            const st = g.starDrops[j]
+            const dx = s.x - st.x
+            const dy = s.y - st.y
+            const rr = 20 + s.r
+            if (dx * dx + dy * dy < rr * rr) {
+              g.starDrops.splice(j, 1)
+              collectStar(st)
+              got = true
+              break
+            }
+          }
+        }
+        if (got) {
           g.shots.splice(i, 1)
           continue
         }
@@ -2207,17 +2744,7 @@ export default function Home() {
               g.score++
               addText(g, m.x + rand(-20, 20), m.y - m.r * 0.4, pick(['Boing!', 'Boop!', 'Pop!']), '#f278ab', 20)
               addText(g, m.x + 28, m.y - m.r * 0.4 - 24, '+1⭐', '#e8a800', 14)
-              if (m.hp <= 0) {
-                // 🎆 the boss is popped — fireworks & a big star bonus!
-                const b = BOSSES[m.boss]
-                g.monsters.splice(j, 1)
-                burst(g, m.x, m.y, m.color)
-                fireworks(g)
-                g.score += b.bonus
-                addText(g, m.x, m.y - 46, `+${b.bonus} ⭐ BONUS!`, '#e8a800', 24)
-                audio.bossDown()
-                completeLevel()
-              }
+              if (m.hp <= 0) defeatBoss(j) // 🎆 fireworks & a big star bonus!
             } else if (m.hp <= 0) {
               // popped! confetti party! 🎉
               g.monsters.splice(j, 1)
@@ -2225,6 +2752,10 @@ export default function Home() {
               g.popped++
               g.score++
               audio.popFor(g.character) // your pal's own happy pop!
+              // sometimes a happy little bonus star tumbles out! ⭐
+              if (Math.random() < PU.starChance) {
+                g.starDrops.push({ x: m.x, y: m.y, vx: rand(-50, 50), vy: -90, rot: rand(0, 6), vr: rand(-5, 5), alpha: 1 })
+              }
               // goal reached? time for the level's big friendly boss!
               if (g.popped >= goal && !g.bossSpawned) spawnBoss()
             } else {
@@ -2236,6 +2767,81 @@ export default function Home() {
           }
         }
         if (g.state !== 'playing') return
+      }
+
+      /* ── ⏳ the timed power-up counts down ── */
+      if (g.active) {
+        g.active.t -= dt
+        if (g.active.t <= 0) {
+          // the power gently says goodbye with a few sleepy sparkles
+          for (let k = 0; k < 6; k++) {
+            g.parts.push({
+              x: g.player.x + rand(-30, 30), y: g.h - 110 + rand(-24, 24),
+              vx: rand(-40, 40), vy: rand(-80, -20),
+              life: rand(0.3, 0.6), maxLife: 0.6,
+              color: '#fff8c9', size: rand(2, 4), rot: 0, vr: rand(-4, 4), kind: 'sparkle',
+            })
+          }
+          g.active = null
+          syncHud()
+        }
+      }
+
+      /* ── 🎁⭐ gifts & bonus stars drift down — catch them! ── */
+      const magnet = g.active?.type === 'magnet'
+      const palY = g.h - 96 // the pal's hover height
+      for (let i = g.powerups.length - 1; i >= 0; i--) {
+        const u = g.powerups[i]
+        if (magnet) {
+          // ⭐ Star Magnet: gifts fly to you like happy little homing birds!
+          const dx = p.x - u.x
+          const dy = palY - 20 - u.y
+          const d = Math.hypot(dx, dy) || 1
+          u.x += (dx / d) * 300 * dt
+          u.y += (dy / d) * 300 * dt
+        } else {
+          u.y += u.vy * dt
+          u.x = u.baseX + Math.sin(g.time * 1.4 + u.phase) * 16
+        }
+        // touched by your pal? collect! (bubbles can pop gifts too — see above!)
+        const dxp = p.x - u.x
+        const dyp = palY - 10 - u.y
+        if (dxp * dxp + dyp * dyp < 58 * 58) {
+          g.powerups.splice(i, 1)
+          collectPowerUp(u.type, u.x, u.y)
+          continue
+        }
+        // missed? gifts fade away gently at the bottom — no penalty, ever 💛
+        if (u.y > g.h - 46) {
+          u.alpha -= dt * 1.6
+          if (u.alpha <= 0) g.powerups.splice(i, 1)
+        }
+      }
+      for (let i = g.starDrops.length - 1; i >= 0; i--) {
+        const st = g.starDrops[i]
+        if (magnet) {
+          const dx = p.x - st.x
+          const dy = palY - 10 - st.y
+          const d = Math.hypot(dx, dy) || 1
+          st.x += (dx / d) * 300 * dt
+          st.y += (dy / d) * 300 * dt
+        } else {
+          st.vy += 240 * dt // stars tumble down with a tiny bit of gravity
+          st.x += st.vx * dt
+          st.y += st.vy * dt
+          st.rot += st.vr * dt
+        }
+        const dxp = p.x - st.x
+        const dyp = palY - 10 - st.y
+        if (dxp * dxp + dyp * dyp < 46 * 46) {
+          g.starDrops.splice(i, 1)
+          collectStar(st)
+          continue
+        }
+        if (st.y > g.h - 30) {
+          st.alpha -= dt * 2
+          if (st.alpha <= 0) g.starDrops.splice(i, 1)
+        }
       }
       syncHud()
     }
@@ -2343,6 +2949,7 @@ export default function Home() {
 
   const goal = hud.goal
   const pct = Math.min(100, Math.round((hud.popped / goal) * 100))
+  const powerCfg = hud.powerType ? POWERUPS[hud.powerType] : null
 
   return (
     <main
@@ -2363,6 +2970,7 @@ export default function Home() {
         .floaty { animation: floaty-kf 2.4s ease-in-out infinite }
         @keyframes wiggle-kf { 0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(4deg) } }
         .wiggle { animation: wiggle-kf 1.2s ease-in-out infinite }
+        @keyframes ring-drain-kf { from { stroke-dashoffset: 0 } to { stroke-dashoffset: 163.4 } }
       `}</style>
 
       {/* ════════ THE GAME WORLD ════════ */}
@@ -2373,8 +2981,8 @@ export default function Home() {
       >
         <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" aria-label="Bubble Pop Adventure game" role="img" />
 
-        {/* ── HUD: pal face + hearts (top-left) ── */}
-        <div className="pointer-events-none absolute left-3 top-3 z-30">
+        {/* ── HUD: pal face + hearts, shield badge & power-up ring (top-left) ── */}
+        <div className="pointer-events-none absolute left-3 top-3 z-30 flex flex-col items-start gap-2">
           <div key={hurtKey} className={`flex items-center gap-1.5 rounded-full bg-white/85 py-2 pl-3 pr-4 shadow-md ${hud.hearts < hud.maxHearts ? 'heart-shake' : ''}`}>
             <CharacterPortrait id={hud.character} size={34} />
             {Array.from({ length: MODES[hud.mode].hearts }, (_, i) => (
@@ -2387,6 +2995,42 @@ export default function Home() {
             ))}
             <span className="sr-only">{hud.hearts} of {MODES[hud.mode].hearts} hearts left</span>
           </div>
+
+          {/* 🫧 the Bubble Shield is ready — it will block one hit! */}
+          {hud.shield && (
+            <div className="flex items-center gap-1.5 rounded-full bg-white/85 py-1.5 pl-3 pr-4 shadow-md">
+              <span className="text-xl" aria-hidden>🫧</span>
+              <span className="hidden text-xs font-extrabold text-sky-600 sm:inline">shield ready!</span>
+              <span className="sr-only">Bubble shield will block one hit</span>
+            </div>
+          )}
+
+          {/* ⏳ countdown ring for the timed power-up that is running */}
+          {powerCfg && (
+            <div
+              key={`${hud.powerType}-${hud.powerStamp}`}
+              className="flex items-center gap-1.5 rounded-full bg-white/85 py-1.5 pl-1.5 pr-4 shadow-md"
+            >
+              <svg width="36" height="36" viewBox="0 0 60 60" role="img" aria-label={`${powerCfg.name}: time left`}>
+                <circle cx="30" cy="30" r="26" fill="none" stroke="#f1e7d7" strokeWidth="7" />
+                <circle
+                  cx="30"
+                  cy="30"
+                  r="26"
+                  fill="none"
+                  stroke={powerCfg.color}
+                  strokeWidth="7"
+                  strokeLinecap="round"
+                  strokeDasharray="163.4"
+                  strokeDashoffset="0"
+                  transform="rotate(-90 30 30)"
+                  style={{ animation: `ring-drain-kf ${powerCfg.duration}s linear forwards` }}
+                />
+              </svg>
+              <span className="text-xl" aria-hidden>{powerCfg.emoji}</span>
+              <span className="hidden text-xs font-extrabold leading-tight text-gray-600 sm:inline">{powerCfg.name}</span>
+            </div>
+          )}
         </div>
 
         {/* ── HUD: level & progress (top-center; below hearts on phones) ── */}
@@ -2433,7 +3077,7 @@ export default function Home() {
           <div className="pointer-events-none absolute left-1/2 top-[136px] z-30 w-[86%] max-w-xs -translate-x-1/2 sm:top-[84px]">
             <div className="pop-in rounded-3xl border-4 border-amber-200 bg-white/95 px-4 py-3 text-center shadow-xl">
               <div className="text-[11px] font-extrabold uppercase tracking-wide text-amber-500">
-                {friend.boss ? '👑 Here comes a BIG friend!' : '✨ Meet a new friend!'}
+                {friend.boss ? '👑 Here comes a BIG friend!' : friend.power ? '🎁 POWER-UP GET!' : '✨ Meet a new friend!'}
               </div>
               <div className="mt-1 flex items-center justify-center gap-2">
                 <span className={`${friend.boss ? 'wiggle' : 'floaty'} text-3xl`} aria-hidden>
