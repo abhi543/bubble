@@ -9,7 +9,8 @@
       • Silly smiling monsters that drift down from the sky
       • Pop them with bubbles & stars → confetti + sparkles + happy sounds!
       • 5 hearts, 3 easy levels, reward screens, cheerful music, mute button
-      • Big START GAME & QUIT GAME buttons + a cozy pause break (ESC on desktop)
+      • Press START GAME → choose Kids or Grown-Ups → pop!
+      • QUIT GAME appears only after a game ends (out of hearts — or champion!)
 
    🕹  CONTROLS
       • Keyboard:  ← →  (or A / D) to move  •  SPACE (hold it!) to shoot
@@ -29,7 +30,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
-  Check,
   DoorOpen,
   Heart,
   PartyPopper,
@@ -149,7 +149,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
 
 /* ───────────────────────────── game types ───────────────────────────── */
-type UIState = 'menu' | 'playing' | 'paused' | 'levelClear' | 'over' | 'won' | 'bye'
+type UIState = 'menu' | 'modeSelect' | 'playing' | 'levelClear' | 'over' | 'won' | 'bye'
 
 interface Monster {
   x: number
@@ -900,12 +900,10 @@ export default function Home() {
   const audioRef = useRef<GameAudio | null>(null)
   const controlsRef = useRef<{
     start: (mode: Mode) => void
-    selectMode: (mode: Mode) => void
+    showModes: () => void
     next: () => void
     toggleMute: () => void
     toMenu: () => void
-    pause: () => void
-    resume: () => void
     bye: () => void
   } | null>(null)
 
@@ -926,14 +924,14 @@ export default function Home() {
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
   const [hurtKey, setHurtKey] = useState(0) // changing this re-plays the heart-shake
-  const [selectedMode, setSelectedMode] = useState<Mode>('kids') // mode highlighted on the menu
+  const [lastMode, setLastMode] = useState<Mode | null>(null) // ⭐ chip on the mode you played last time
 
-  // if you played before, gently pre-pick the mode you chose last time
+  // remember which mode was played last visit (purely cosmetic highlight)
   useEffect(() => {
     const id = setTimeout(() => {
       try {
         const saved = localStorage.getItem('bubblePopMode')
-        if (saved === 'kids' || saved === 'adults') setSelectedMode(saved)
+        if (saved === 'kids' || saved === 'adults') setLastMode(saved)
       } catch {
         /* private browsing — no problem */
       }
@@ -1044,34 +1042,19 @@ export default function Home() {
       syncHud()
     }
 
-    /* menu: tap a mode card — nothing starts yet (the big START button does) */
-    const selectMode = (m: Mode) => {
+    /* menu: the big START button was pressed — now show "who's flying today?" */
+    const showModes = () => {
       audio.init()
       audio.click()
-      setSelectedMode(m)
+      g.state = 'modeSelect'
+      setUi('modeSelect')
     }
 
-    /* ⏸ take a break — freezes monsters, bubbles & music until you're ready */
-    const pause = () => {
-      if (g.state !== 'playing') return
-      audio.click()
-      g.state = 'paused'
-      audio.stopMusic()
-      setUi('paused')
-    }
-
-    /* ▶ back to the fun — unfreezes everything */
-    const resume = () => {
-      if (g.state !== 'paused') return
-      audio.click()
-      g.state = 'playing'
-      audio.startMusic(MODES[g.mode].fastMusic)
-      setUi('playing')
-    }
-
-    /* 👋 quit from the menu → a friendly goodbye screen */
+    /* 👋 quit (lives only on the end screens) → a friendly goodbye screen */
     const bye = () => {
       audio.click()
+      g.monsters.length = 0
+      g.shots.length = 0
       g.state = 'bye'
       setUi('bye')
     }
@@ -1232,10 +1215,6 @@ export default function Home() {
         keys.shoot = true
         audio.init()
       }
-      if (e.key === 'Escape') {
-        if (g.state === 'playing') pause() // esc = take a little break
-        else if (g.state === 'paused') resume() // esc again = back to the fun!
-      }
     }
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false
@@ -1297,7 +1276,7 @@ export default function Home() {
       setMuted(audio.muted)
       audio.click()
     }
-    controlsRef.current = { start, selectMode, next, toggleMute, toMenu, pause, resume, bye }
+    controlsRef.current = { start, showModes, next, toggleMute, toMenu, bye }
 
     /* ── go! ── */
     let raf = 0
@@ -1407,25 +1386,11 @@ export default function Home() {
           >
             {muted ? <VolumeX size={24} className="text-gray-500" /> : <Volume2 size={24} className="text-emerald-600" />}
           </button>
-          {/* quit button — only while playing (pauses the game & asks "sure?") */}
-          {ui === 'playing' && (
-            <button
-              onClick={(e) => {
-                e.currentTarget.blur()
-                controlsRef.current?.pause()
-              }}
-              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-md transition active:scale-90"
-              aria-label="Quit the game"
-              title="Quit game"
-            >
-              <DoorOpen size={24} className="text-rose-500" aria-hidden />
-            </button>
-          )}
         </div>
 
         {/* tiny desktop hint */}
         <div className="pointer-events-none absolute bottom-2 left-3 z-10 hidden text-xs font-bold text-slate-600/70 sm:block">
-          ← → move · space = pop! · esc = break
+          ← → move · space = pop!
         </div>
 
         {/* ════════ OVERLAY: START MENU ════════ */}
@@ -1451,69 +1416,69 @@ export default function Home() {
               </div>
               <p className="mt-2 text-xs font-bold text-gray-400">On a tablet? Drag to move, tap to pop!</p>
 
-              {/* ── step 1 · pick your mode (tap a card, then press START!) ── */}
-              <p className="mt-5 text-xs font-extrabold uppercase tracking-widest text-gray-400">1 · Pick your mode</p>
+              {/* ── the one & only START button! (mode picking comes next) ── */}
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.selectMode('kids')
+                  controlsRef.current?.showModes()
                 }}
-                aria-pressed={selectedMode === 'kids'}
-                className={`relative mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95 ${selectedMode === 'kids' ? 'ring-4 ring-emerald-300 ring-offset-2' : 'opacity-85'}`}
+                className="mt-6 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-amber-400 text-2xl font-extrabold text-white shadow-lg shadow-amber-200 transition hover:bg-amber-500 active:scale-95"
+              >
+                <Play size={30} aria-hidden /> START GAME
+              </button>
+              <p className="mt-3 text-sm font-bold text-gray-400">Kids &amp; grown-ups · 3 bubbly levels each! 🫧</p>
+            </div>
+          </div>
+        )}
+
+        {/* ════════ OVERLAY: WHO'S FLYING TODAY? (only after pressing START) ════════ */}
+        {ui === 'modeSelect' && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
+            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+              <div className="floaty text-6xl" aria-hidden>🚀</div>
+              <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">Who&rsquo;s flying today?</h2>
+              <p className="mt-1 text-base font-bold text-gray-500">Pick your adventure and go!</p>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.start('kids')
+                }}
+                className="relative mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95"
               >
                 <span className="text-3xl" aria-hidden>🧒</span>
                 <span className="flex flex-col items-start leading-tight">
                   <span>{MODES.kids.label}</span>
                   <span className="text-[11px] font-bold text-white/90">{MODES.kids.blurb}</span>
                 </span>
-                {selectedMode === 'kids' && (
-                  <span className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-emerald-300 bg-white text-emerald-500 shadow" aria-hidden>
-                    <Check size={16} strokeWidth={3.5} />
-                  </span>
+                {lastMode === 'kids' && (
+                  <span className="absolute -top-2 right-3 rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold text-emerald-500 shadow" aria-hidden>⭐ last time</span>
                 )}
               </button>
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.selectMode('adults')
+                  controlsRef.current?.start('adults')
                 }}
-                aria-pressed={selectedMode === 'adults'}
-                className={`relative mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95 ${selectedMode === 'adults' ? 'ring-4 ring-pink-300 ring-offset-2' : 'opacity-85'}`}
+                className="relative mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95"
               >
                 <span className="text-3xl" aria-hidden>🧑‍🚀</span>
                 <span className="flex flex-col items-start leading-tight">
                   <span>{MODES.adults.label}</span>
                   <span className="text-[11px] font-bold text-white/90">{MODES.adults.blurb}</span>
                 </span>
-                {selectedMode === 'adults' && (
-                  <span className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-pink-300 bg-white text-pink-500 shadow" aria-hidden>
-                    <Check size={16} strokeWidth={3.5} />
-                  </span>
+                {lastMode === 'adults' && (
+                  <span className="absolute -top-2 right-3 rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold text-pink-500 shadow" aria-hidden>⭐ last time</span>
                 )}
               </button>
-
-              {/* ── step 2 · start the adventure! ── */}
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.start(selectedMode)
+                  controlsRef.current?.toMenu()
                 }}
-                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-amber-400 text-2xl font-extrabold text-white shadow-lg shadow-amber-200 transition hover:bg-amber-500 active:scale-95"
+                className="mt-4 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
               >
-                <Play size={30} aria-hidden /> START GAME
+                go back
               </button>
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur()
-                  controlsRef.current?.bye()
-                }}
-                className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-amber-200 bg-white text-base font-extrabold text-gray-400 shadow-sm transition hover:bg-amber-50 hover:text-rose-400 active:scale-95"
-              >
-                <DoorOpen size={20} aria-hidden /> QUIT GAME
-              </button>
-              <p className="mt-3 text-sm font-bold text-gray-400">
-                {selectedMode === 'kids' ? MODES.kids.label : MODES.adults.label} · 3 bubbly levels! 🫧
-              </p>
             </div>
           </div>
         )}
@@ -1583,11 +1548,11 @@ export default function Home() {
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.toMenu()
+                  controlsRef.current?.bye()
                 }}
-                className="mt-3 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
+                className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-rose-200 bg-white text-base font-extrabold text-rose-400 shadow-sm transition hover:bg-rose-50 active:scale-95"
               >
-                back to menu
+                <DoorOpen size={20} aria-hidden /> QUIT GAME
               </button>
             </div>
           </div>
@@ -1624,47 +1589,16 @@ export default function Home() {
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.toMenu()
+                  controlsRef.current?.bye()
                 }}
-                className="mt-3 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
+                className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-rose-200 bg-white text-base font-extrabold text-rose-400 shadow-sm transition hover:bg-rose-50 active:scale-95"
               >
-                back to menu
+                <DoorOpen size={20} aria-hidden /> QUIT GAME
               </button>
             </div>
           </div>
         )}
-        {/* ════════ OVERLAY: PAUSED — quit check before leaving ════════ */}
-        {ui === 'paused' && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
-            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-emerald-200 bg-white p-6 text-center shadow-2xl sm:p-8">
-              <div className="floaty text-6xl" aria-hidden>☕</div>
-              <h2 className="mt-2 text-3xl font-extrabold text-emerald-600 sm:text-4xl">Taking a break?</h2>
-              <p className="mt-2 text-base font-bold text-gray-500">
-                The silly monsters are waiting patiently… 👾
-              </p>
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur()
-                  controlsRef.current?.resume()
-                }}
-                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-2xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95"
-              >
-                <Play size={30} aria-hidden /> KEEP PLAYING
-              </button>
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur()
-                  controlsRef.current?.toMenu()
-                }}
-                className="mt-2 flex h-14 w-full items-center justify-center gap-2 rounded-full border-2 border-rose-200 bg-white text-lg font-extrabold text-rose-400 shadow-sm transition hover:bg-rose-50 active:scale-95"
-              >
-                <DoorOpen size={22} aria-hidden /> QUIT GAME
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ════════ OVERLAY: GOODBYE 👋 (after quitting from the menu) ════════ */}
+        {/* ════════ OVERLAY: GOODBYE 👋 (after quitting from an end screen) ════════ */}
         {ui === 'bye' && (
           <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
             <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-amber-200 bg-white p-6 text-center shadow-2xl sm:p-8">
