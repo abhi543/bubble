@@ -1,0 +1,1548 @@
+     1→'use client'
+     2→
+     3→/* ═══════════════════════════════════════════════════════════════════════
+     4→   🫧  BUBBLE POP ADVENTURE — a happy, no-violence arcade game for kids 5–10
+     5→   ═══════════════════════════════════════════════════════════════════════
+     6→
+     7→   ✨ WHAT'S INSIDE (everything lives in THIS ONE FILE!)
+     8→      • A cute rocket you steer at the bottom of the screen
+     9→      • Silly smiling monsters that drift down from the sky
+    10→      • Pop them with bubbles & stars → confetti + sparkles + happy sounds!
+    11→      • 5 hearts, 3 easy levels, reward screens, cheerful music, mute button
+    12→
+    13→   🕹  CONTROLS
+    14→      • Keyboard:  ← →  (or A / D) to move  •  SPACE (hold it!) to shoot
+    15→      • Touch/Mouse: drag your finger to move  •  tap the screen to shoot
+    16→
+    17→   🔧  EASY TWEAKING GUIDE FOR PARENTS & KIDS
+    18→      1. CHANGE SPEEDS ....... look for "SETUP 3 · LEVELS" below
+    19→      2. CHANGE COLORS ....... look for "SETUP 1 · COLORS" below
+    20→      3. CHANGE CHARACTERS ... look for "drawRocket()" and "drawMonster()"
+    21→      4. CHANGE SOUNDS ....... look for the "GameAudio" class
+    22→      Every important number has a friendly comment next to it. Have fun! 💛
+    23→
+    24→   🧪 TESTING CHEAT: add "?turbo" to the URL to make monsters appear super
+    25→      fast (handy for grown-ups who want to check the reward screens).
+    26→   ═══════════════════════════════════════════════════════════════════════ */
+    27→
+    28→import { useEffect, useRef, useState } from 'react'
+    29→import {
+    30→  ArrowRight,
+    31→  Heart,
+    32→  PartyPopper,
+    33→  RotateCcw,
+    34→  Sparkles,
+    35→  Star,
+    36→  Trophy,
+    37→  Volume2,
+    38→  VolumeX,
+    39→} from 'lucide-react'
+    40→
+    41→/* ───────────────────────────────────────────────────────────────────────
+    42→   SETUP 1 · COLORS 🎨  —  change these to re-paint the whole game!
+    43→   ─────────────────────────────────────────────────────────────────────── */
+    44→const COLORS = {
+    45→  skyTop: '#a5e8ff', // top of the sky
+    46→  skyBottom: '#fff3c9', // bottom of the sky (warm glow)
+    47→  sun: '#ffd93d', // the smiling sun
+    48→  hillLight: '#8ee06e', // front grassy hill
+    49→  hillDark: '#5ec44f', // back grassy hill
+    50→  playerBody: '#ff8a5c', // rocket body (coral)
+    51→  playerTrim: '#e26a3d', // rocket outline / fins
+    52→  playerWindow: '#dff3ff', // rocket window
+    53→  flame: '#ffd93d', // rocket flame
+    54→  monsters: ['#ff8fb1', '#b18aff', '#7fd8be', '#ffb35c', '#4ecdc4'], // silly monster outfits
+    55→  confetti: ['#ff8fb1', '#ffd93d', '#7fd8be', '#b18aff', '#ff9f43', '#4ecdc4', '#ff6b6b'],
+    56→  face: '#5b4a3f', // eyes & smiles on every character
+    57→}
+    58→
+    59→/* ───────────────────────────────────────────────────────────────────────
+    60→   SETUP 2 · GAME MODES 🧒🧑‍🚀  —  Kids vs Grown-Ups. Tune each one here!
+    61→     hearts         = how many hearts you get in this mode
+    62→     monsterRadius  = smallest & biggest monster size (smaller = trickier)
+    63→     shootCooldown  = seconds between bubbles (smaller = faster shooting)
+    64→     fastMusic      = true = the music loops a little quicker (extra pep!)
+    65→   ─────────────────────────────────────────────────────────────────────── */
+    66→type Mode = 'kids' | 'adults'
+    67→
+    68→interface LevelConfig {
+    69→  name: string
+    70→  goal: number
+    71→  spawnEvery: number
+    72→  spawnEveryMin: number
+    73→  fallSpeed: number
+    74→  fallSpeedMax: number
+    75→  drift: number
+    76→  maxOnScreen: number
+    77→}
+    78→
+    79→interface ModeConfig {
+    80→  label: string
+    81→  emoji: string
+    82→  blurb: string
+    83→  hearts: number
+    84→  monsterRadius: [number, number]
+    85→  shootCooldown: number
+    86→  fastMusic: boolean
+    87→  levels: LevelConfig[]
+    88→}
+    89→
+    90→/* ── per-level settings (same meaning in both modes):
+    91→     goal          = how many monsters to pop to finish the level
+    92→     spawnEvery    = seconds between new monsters at the START of a level
+    93→     spawnEveryMin = the fastest the level ever gets at spawning
+    94→     fallSpeed     = how fast monsters fall at the start (pixels/second)
+    95→     fallSpeedMax  = how fast they fall once you're almost done
+    96→     drift         = how much they wiggle side to side
+    97→     maxOnScreen   = never more than this many monsters at once             */
+    98→const MODES: Record<Mode, ModeConfig> = {
+    99→  kids: {
+   100→    label: 'KIDS MODE',
+   101→    emoji: '🧒',
+   102→    blurb: 'slow & giggly · 5 hearts · big silly monsters',
+   103→    hearts: 5,
+   104→    monsterRadius: [22, 30],
+   105→    shootCooldown: 0.32,
+   106→    fastMusic: false,
+   107→    levels: [
+   108→      { name: 'Level 1', goal: 10, spawnEvery: 2.2, spawnEveryMin: 1.5, fallSpeed: 45, fallSpeedMax: 80, drift: 22, maxOnScreen: 4 },
+   109→      { name: 'Level 2', goal: 15, spawnEvery: 1.8, spawnEveryMin: 1.1, fallSpeed: 60, fallSpeedMax: 105, drift: 30, maxOnScreen: 5 },
+   110→      { name: 'Level 3', goal: 20, spawnEvery: 1.5, spawnEveryMin: 0.9, fallSpeed: 75, fallSpeedMax: 130, drift: 38, maxOnScreen: 6 },
+   111→    ],
+   112→  },
+   113→  adults: {
+   114→    label: 'GROWN-UPS MODE',
+   115→    emoji: '🧑‍🚀',
+   116→    blurb: 'fast & tricky · 3 hearts · tiny sneaky monsters',
+   117→    hearts: 3,
+   118→    monsterRadius: [15, 22],
+   119→    shootCooldown: 0.26,
+   120→    fastMusic: true,
+   121→    levels: [
+   122→      { name: 'Level 1', goal: 15, spawnEvery: 1.5, spawnEveryMin: 0.9, fallSpeed: 95, fallSpeedMax: 170, drift: 45, maxOnScreen: 6 },
+   123→      { name: 'Level 2', goal: 22, spawnEvery: 1.2, spawnEveryMin: 0.7, fallSpeed: 115, fallSpeedMax: 210, drift: 60, maxOnScreen: 8 },
+   124→      { name: 'Level 3', goal: 30, spawnEvery: 1.0, spawnEveryMin: 0.55, fallSpeed: 135, fallSpeedMax: 250, drift: 75, maxOnScreen: 10 },
+   125→    ],
+   126→  },
+   127→}
+   128→
+   129→const levelsOf = (m: Mode): LevelConfig[] => MODES[m].levels
+   130→const FONT = '"Comic Sans MS", "Chalkboard SE", "Comic Neue", system-ui, sans-serif'
+   131→
+   132→/* Testing cheat: add "?turbo" to the URL and monsters appear crazy fast
+   133→   and each level only needs 2 pops (handy for grown-ups checking rewards).
+   134→   It is detected inside the game (client-side only) to keep SSR happy. */
+   135→
+   136→const PLAYER = {
+   137→  speed: 340, // how fast the rocket slides left/right (pixels per second)
+   138→  shotSpeed: 460, // how fast bubbles fly upward
+   139→}
+   140→
+   141→/* ───────────────────────────── tiny helpers ─────────────────────────── */
+   142→const rand = (a: number, b: number) => a + Math.random() * (b - a)
+   143→const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+   144→const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+   145→const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
+   146→
+   147→/* ───────────────────────────── game types ───────────────────────────── */
+   148→type UIState = 'menu' | 'playing' | 'levelClear' | 'over' | 'won'
+   149→
+   150→interface Monster {
+   151→  x: number
+   152→  y: number
+   153→  baseX: number
+   154→  r: number
+   155→  color: string
+   156→  kind: number // 0 = blob · 1 = balloon · 2 = star critter
+   157→  wob: number // wobble timer (side-to-side wiggle)
+   158→  wobSpeed: number
+   159→  drift: number
+   160→  speedMul: number // each monster is a tiny bit faster/slower than its friends
+   161→  blink: number // counts down to the next cute blink
+   162→}
+   163→
+   164→interface Shot {
+   165→  x: number
+   166→  y: number
+   167→  vy: number
+   168→  r: number
+   169→  kind: 'bubble' | 'star'
+   170→  wob: number
+   171→}
+   172→
+   173→interface Particle {
+   174→  x: number
+   175→  y: number
+   176→  vx: number
+   177→  vy: number
+   178→  life: number
+   179→  maxLife: number
+   180→  color: string
+   181→  size: number
+   182→  rot: number
+   183→  vr: number
+   184→  kind: 'confetti' | 'sparkle' | 'ring' | 'text'
+   185→  text?: string
+   186→}
+   187→
+   188→interface Cloud {
+   189→  x: number
+   190→  y: number
+   191→  s: number
+   192→  v: number
+   193→}
+   194→
+   195→interface GameData {
+   196→  state: UIState
+   197→  w: number
+   198→  h: number
+   199→  turbo: boolean // "?turbo" testing mode
+   200→  time: number // total seconds elapsed (for animations)
+   201→  player: { x: number; tilt: number; cool: number }
+   202→  targetX: number | null // finger/mouse position while dragging
+   203→  dragging: boolean
+   204→  monsters: Monster[]
+   205→  shots: Shot[]
+   206→  parts: Particle[]
+   207→  clouds: Cloud[]
+   208→  mode: Mode // 'kids' = gentle · 'adults' = tricky
+   209→  level: number // index into the level list of the current mode
+   210→  popped: number // monsters popped this level
+   211→  score: number // total stars collected (across all levels)
+   212→  hearts: number
+   213→  spawnT: number // countdown until the next monster appears
+   214→  shotIndex: number // alternates bubble / star
+   215→}
+   216→
+   217→function freshGame(): GameData {
+   218→  return {
+   219→    state: 'menu',
+   220→    w: 800,
+   221→    h: 600,
+   222→    turbo: typeof window !== 'undefined' && window.location.search.includes('turbo'),
+   223→    mode: 'kids',
+   224→    time: 0,
+   225→    player: { x: 400, tilt: 0, cool: 0 },
+   226→    targetX: null,
+   227→    dragging: false,
+   228→    monsters: [],
+   229→    shots: [],
+   230→    parts: [],
+   231→    clouds: Array.from({ length: 4 }, (_, i) => ({
+   232→      x: rand(0, 900),
+   233→      y: 40 + i * 55 + rand(0, 30),
+   234→      s: rand(0.7, 1.3),
+   235→      v: rand(8, 20), // cloud drift speed
+   236→    })),
+   237→    level: 0,
+   238→    popped: 0,
+   239→    score: 0,
+   240→    hearts: MODES.kids.hearts,
+   241→    spawnT: 0.8,
+   242→    shotIndex: 0,
+   243→  }
+   244→}
+   245→
+   246→/* Effective goal for the current level (turbo mode shrinks it for testing) */
+   247→const goalOf = (g: GameData) => (g.turbo ? 2 : levelsOf(g.mode)[g.level].goal)
+   248→
+   249→/* ═══════════════════════════════════════════════════════════════════════
+   250→   🔊 SOUND ENGINE — every beep is generated with the Web Audio API,
+   251→   so there are no sound files to download. Tweak the numbers freely!
+   252→   ═══════════════════════════════════════════════════════════════════════ */
+   253→class GameAudio {
+   254→  private ctx: AudioContext | null = null
+   255→  private master: GainNode | null = null
+   256→  private musicGain: GainNode | null = null
+   257→  private musicTimer: ReturnType<typeof setInterval> | null = null
+   258→  private step = 0
+   259→  private nextTime = 0
+   260→  private stepDur = 0.25 // one 8th-note; grown-ups mode gets a pepzier tempo
+   261→  muted = false
+   262→
+   263→  /* Create the audio context lazily (browsers require a user gesture first) */
+   264→  init() {
+   265→    if (typeof window === 'undefined') return
+   266→    try {
+   267→      if (!this.ctx) {
+   268→        const AC =
+   269→          window.AudioContext ||
+   270→          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+   271→        this.ctx = new AC()
+   272→        this.master = this.ctx.createGain()
+   273→        this.master.gain.value = this.muted ? 0 : 0.9
+   274→        this.master.connect(this.ctx.destination)
+   275→        this.musicGain = this.ctx.createGain()
+   276→        this.musicGain.gain.value = 0.5 // music a bit quieter than effects
+   277→        this.musicGain.connect(this.master)
+   278→      }
+   279→      if (this.ctx.state === 'suspended') void this.ctx.resume()
+   280→    } catch {
+   281→      /* no audio available — the game still works silently */
+   282→    }
+   283→  }
+   284→
+   285→  setMuted(m: boolean) {
+   286→    this.muted = m
+   287→    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.02)
+   288→  }
+   289→
+   290→  private f(midi: number) {
+   291→    return 440 * Math.pow(2, (midi - 69) / 12)
+   292→  }
+   293→
+   294→  /* One little note with a soft envelope */
+   295→  private tone(o: {
+   296→    freq: number
+   297→    time: number
+   298→    dur: number
+   299→    type?: OscillatorType
+   300→    vol?: number
+   301→    glide?: number
+   302→    dest?: GainNode | null
+   303→  }) {
+   304→    if (!this.ctx || !this.master) return
+   305→    const { freq, time, dur, type = 'sine', vol = 0.2, glide, dest = this.master } = o
+   306→    const t = Math.max(time, this.ctx.currentTime)
+   307→    const osc = this.ctx.createOscillator()
+   308→    const gain = this.ctx.createGain()
+   309→    osc.type = type
+   310→    osc.frequency.setValueAtTime(freq, t)
+   311→    if (glide) osc.frequency.exponentialRampToValueAtTime(glide, t + dur)
+   312→    gain.gain.setValueAtTime(0.0001, t)
+   313→    gain.gain.exponentialRampToValueAtTime(vol, t + 0.015)
+   314→    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+   315→    osc.connect(gain)
+   316→    gain.connect(dest)
+   317→    osc.start(t)
+   318→    osc.stop(t + dur + 0.05)
+   319→  }
+   320→
+   321→  /* ── SOUND EFFECTS ────────────────────────────────────────────────── */
+   322→  click() {
+   323→    this.init()
+   324→    if (!this.ctx) return
+   325→    this.tone({ freq: 750, time: this.ctx.currentTime, dur: 0.07, vol: 0.12, glide: 980 })
+   326→  }
+   327→
+   328→  /* soft bubbly "pew" when shooting */
+   329→  shoot() {
+   330→    this.init()
+   331→    if (!this.ctx) return
+   332→    this.tone({ freq: 340, time: this.ctx.currentTime, dur: 0.11, vol: 0.14, glide: 640 })
+   333→  }
+   334→
+   335→  /* happy musical "pop!" — each pop chimes a different happy note */
+   336→  pop() {
+   337→    this.init()
+   338→    if (!this.ctx) return
+   339→    const t = this.ctx.currentTime
+   340→    const base = pick([523.25, 587.33, 659.25, 783.99, 880])
+   341→    this.tone({ freq: base, time: t, dur: 0.18, type: 'triangle', vol: 0.22 })
+   342→    this.tone({ freq: base * 2, time: t + 0.04, dur: 0.12, vol: 0.09 })
+   343→  }
+   344→
+   345→  /* gentle "oops" when a monster slips past — friendly, never scary */
+   346→  oops() {
+   347→    this.init()
+   348→    if (!this.ctx) return
+   349→    const t = this.ctx.currentTime
+   350→    this.tone({ freq: 392, time: t, dur: 0.15, type: 'triangle', vol: 0.18 })
+   351→    this.tone({ freq: 311, time: t + 0.16, dur: 0.28, type: 'triangle', vol: 0.18 })
+   352→  }
+   353→
+   354→  /* little fanfare when a level is complete */
+   355→  levelUp() {
+   356→    this.init()
+   357→    if (!this.ctx) return
+   358→    const t = this.ctx.currentTime
+   359→    const notes = [72, 76, 79, 84] // C5 E5 G5 C6
+   360→    notes.forEach((n, i) =>
+   361→      this.tone({ freq: this.f(n), time: t + i * 0.1, dur: i === 3 ? 0.45 : 0.18, type: 'triangle', vol: 0.2 })
+   362→    )
+   363→  }
+   364→
+   365→  /* BIG happy fanfare for finishing all three levels */
+   366→  win() {
+   367→    this.init()
+   368→    if (!this.ctx) return
+   369→    const t = this.ctx.currentTime
+   370→    const seq: Array<[number, number, number]> = [
+   371→      [72, 0, 0.14],
+   372→      [76, 0.12, 0.14],
+   373→      [79, 0.24, 0.14],
+   374→      [84, 0.36, 0.3],
+   375→      [79, 0.6, 0.12],
+   376→      [84, 0.72, 0.14],
+   377→      [88, 0.9, 0.6],
+   378→    ]
+   379→    seq.forEach(([n, dt, dur]) =>
+   380→      this.tone({ freq: this.f(n), time: t + dt, dur, type: 'triangle', vol: 0.2 })
+   381→    )
+   382→  }
+   383→
+   384→  /* soft, encouraging jingle for "Great try!" — no sad trombones here */
+   385→  gameOverJingle() {
+   386→    this.init()
+   387→    if (!this.ctx) return
+   388→    const t = this.ctx.currentTime
+   389→    this.tone({ freq: this.f(64), time: t, dur: 0.22, type: 'triangle', vol: 0.16 })
+   390→    this.tone({ freq: this.f(60), time: t + 0.2, dur: 0.22, type: 'triangle', vol: 0.16 })
+   391→    this.tone({ freq: this.f(57), time: t + 0.42, dur: 0.5, type: 'triangle', vol: 0.16 })
+   392→  }
+   393→
+   394→  /* ── MUSIC LOOP 🎵 — a bouncy 8-bar tune that repeats forever ────────
+   395→     32 steps of 8th-notes at 120 BPM. Chords: C → Am → F → G.          */
+   396→  startMusic(fast = false) {
+   397→    this.init()
+   398→    if (!this.ctx || this.musicTimer) return
+   399→    this.stepDur = fast ? 0.227 : 0.25 // 132 BPM vs 120 BPM
+   400→    this.step = 0
+   401→    this.nextTime = this.ctx.currentTime + 0.1
+   402→    this.musicTimer = setInterval(() => this.scheduleMusic(), 100)
+   403→  }
+   404→
+   405→  stopMusic() {
+   406→    if (this.musicTimer) {
+   407→      clearInterval(this.musicTimer)
+   408→      this.musicTimer = null
+   409→    }
+   410→  }
+   411→
+   412→  private scheduleMusic() {
+   413→    if (!this.ctx) return
+   414→    const STEP = this.stepDur // one 8th-note at the current tempo
+   415→    while (this.nextTime < this.ctx.currentTime + 0.4) {
+   416→      this.playMusicStep(this.step, this.nextTime)
+   417→      this.step = (this.step + 1) % 32
+   418→      this.nextTime += STEP
+   419→    }
+   420→  }
+   421→
+   422→  private playMusicStep(s: number, t: number) {
+   423→    if (!this.musicGain) return
+   424→    // melody (midi notes, 0 = rest) — 4 bars of pure pentatonic happiness
+   425→    const MEL = [72, 0, 76, 0, 79, 0, 76, 0, 81, 0, 79, 0, 76, 0, 74, 0, 72, 0, 76, 0, 79, 0, 81, 0, 79, 0, 76, 0, 74, 0, 72, 0]
+   426→    // bass roots: C  A  F  G (one per bar)
+   427→    const BASS = [48, 45, 41, 43]
+   428→    if (MEL[s]) this.tone({ freq: this.f(MEL[s]), time: t, dur: 0.22, type: 'triangle', vol: 0.15, dest: this.musicGain })
+   429→    if (s % 8 === 0) this.tone({ freq: this.f(BASS[(s / 8) | 0]), time: t, dur: 0.5, type: 'sine', vol: 0.2, dest: this.musicGain })
+   430→    if (s % 8 === 4) this.tone({ freq: this.f(BASS[(s / 8) | 0]) + 12, time: t, dur: 0.3, type: 'sine', vol: 0.1, dest: this.musicGain })
+   431→    if (s % 2 === 1) this.tone({ freq: 2100, time: t, dur: 0.03, vol: 0.025, dest: this.musicGain }) // tiny bounce tick
+   432→  }
+   433→}
+   434→
+   435→/* ═══════════════════════════════════════════════════════════════════════
+   436→   🎨 DRAWING HELPERS — change these to redesign the characters!
+   437→   ═══════════════════════════════════════════════════════════════════════ */
+   438→function circle(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+   439→  ctx.beginPath()
+   440→  ctx.arc(x, y, r, 0, Math.PI * 2)
+   441→  ctx.fill()
+   442→}
+   443→
+   444→function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+   445→  ctx.beginPath()
+   446→  ctx.moveTo(x + r, y)
+   447→  ctx.arcTo(x + w, y, x + w, y + h, r)
+   448→  ctx.arcTo(x + w, y + h, x, y + h, r)
+   449→  ctx.arcTo(x, y + h, x, y, r)
+   450→  ctx.arcTo(x, y, x + w, y, r)
+   451→  ctx.closePath()
+   452→}
+   453→
+   454→/* A five-pointed (or any-pointed!) star path */
+   455→function starPath(
+   456→  ctx: CanvasRenderingContext2D,
+   457→  x: number,
+   458→  y: number,
+   459→  outer: number,
+   460→  inner: number,
+   461→  points: number,
+   462→  rot: number
+   463→) {
+   464→  ctx.beginPath()
+   465→  for (let i = 0; i < points * 2; i++) {
+   466→    const rr = i % 2 === 0 ? outer : inner
+   467→    const a = rot + (i * Math.PI) / points
+   468→    const px = x + Math.cos(a) * rr
+   469→    const py = y + Math.sin(a) * rr
+   470→    if (i === 0) ctx.moveTo(px, py)
+   471→    else ctx.lineTo(px, py)
+   472→  }
+   473→  ctx.closePath()
+   474→}
+   475→
+   476→/* Every character shares this happy face 🙂 */
+   477→function happyFace(ctx: CanvasRenderingContext2D, r: number, blinking: boolean, scale = 1, dy = 0) {
+   478→  const ex = r * 0.34 * scale
+   479→  const ey = -r * 0.1 + dy
+   480→  const er = r * 0.2 * scale
+   481→  if (blinking) {
+   482→    // eyes closed = two happy little arcs
+   483→    ctx.strokeStyle = COLORS.face
+   484→    ctx.lineWidth = 2.5
+   485→    ctx.lineCap = 'round'
+   486→    ctx.beginPath()
+   487→    ctx.arc(-ex, ey, er * 0.9, Math.PI * 1.1, Math.PI * 1.9)
+   488→    ctx.stroke()
+   489→    ctx.beginPath()
+   490→    ctx.arc(ex, ey, er * 0.9, Math.PI * 1.1, Math.PI * 1.9)
+   491→    ctx.stroke()
+   492→  } else {
+   493→    ctx.fillStyle = '#ffffff'
+   494→    circle(ctx, -ex, ey, er)
+   495→    circle(ctx, ex, ey, er)
+   496→    ctx.fillStyle = COLORS.face
+   497→    circle(ctx, -ex, ey + er * 0.25, er * 0.45)
+   498→    circle(ctx, ex, ey + er * 0.25, er * 0.45)
+   499→  }
+   500→  // the smile 🙂
+   501→  ctx.strokeStyle = COLORS.face
+   502→  ctx.lineWidth = 2.5
+   503→  ctx.lineCap = 'round'
+   504→  ctx.beginPath()
+   505→  ctx.arc(0, dy + r * 0.12, r * 0.3, Math.PI * 0.2, Math.PI * 0.8)
+   506→  ctx.stroke()
+   507→  // rosy cheeks
+   508→  ctx.fillStyle = 'rgba(255,110,150,0.35)'
+   509→  circle(ctx, -r * 0.55, dy + r * 0.1, r * 0.14)
+   510→  circle(ctx, r * 0.55, dy + r * 0.1, r * 0.14)
+   511→}
+   512→
+   513→/* ☁️ one puffy cloud */
+   514→function drawCloud(ctx: CanvasRenderingContext2D, x: number, y: number, s: number) {
+   515→  ctx.save()
+   516→  ctx.translate(x, y)
+   517→  ctx.fillStyle = 'rgba(255,255,255,0.92)'
+   518→  circle(ctx, 0, 0, 22 * s)
+   519→  circle(ctx, 20 * s, 5 * s, 16 * s)
+   520→  circle(ctx, -20 * s, 6 * s, 15 * s)
+   521→  circle(ctx, 4 * s, -10 * s, 15 * s)
+   522→  ctx.restore()
+   523→}
+   524→
+   525→/* 🌄 the whole cheerful background: sky, smiling sun, clouds, hills, flowers */
+   526→function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
+   527→  const { w, h } = g
+   528→  // sky gradient
+   529→  const grad = ctx.createLinearGradient(0, 0, 0, h)
+   530→  grad.addColorStop(0, COLORS.skyTop)
+   531→  grad.addColorStop(1, COLORS.skyBottom)
+   532→  ctx.fillStyle = grad
+   533→  ctx.fillRect(0, 0, w, h)
+   534→
+   535→  // ☀️ smiling sun with slowly spinning rays
+   536→  const sx = w - 90
+   537→  const sy = 92
+   538→  ctx.save()
+   539→  ctx.translate(sx, sy)
+   540→  ctx.rotate(g.time * 0.15)
+   541→  ctx.fillStyle = 'rgba(255,217,61,0.55)'
+   542→  for (let i = 0; i < 8; i++) {
+   543→    ctx.rotate(Math.PI / 4)
+   544→    ctx.beginPath()
+   545→    ctx.moveTo(0, -42)
+   546→    ctx.lineTo(7, -60)
+   547→    ctx.lineTo(-7, -60)
+   548→    ctx.closePath()
+   549→    ctx.fill()
+   550→  }
+   551→  ctx.restore()
+   552→  ctx.fillStyle = COLORS.sun
+   553→  circle(ctx, sx, sy, 34)
+   554→  ctx.fillStyle = COLORS.face
+   555→  circle(ctx, sx - 11, sy - 5, 3)
+   556→  circle(ctx, sx + 11, sy - 5, 3)
+   557→  ctx.strokeStyle = COLORS.face
+   558→  ctx.lineWidth = 2.5
+   559→  ctx.lineCap = 'round'
+   560→  ctx.beginPath()
+   561→  ctx.arc(sx, sy + 2, 10, Math.PI * 0.15, Math.PI * 0.85)
+   562→  ctx.stroke()
+   563→
+   564→  // ☁️ drifting clouds
+   565→  for (const c of g.clouds) drawCloud(ctx, c.x, c.y, c.s)
+   566→
+   567→  // rolling hills
+   568→  ctx.fillStyle = COLORS.hillDark
+   569→  ctx.beginPath()
+   570→  ctx.ellipse(w * 0.22, h + 60, w * 0.55, 130, 0, 0, Math.PI * 2)
+   571→  ctx.fill()
+   572→  ctx.fillStyle = COLORS.hillLight
+   573→  ctx.beginPath()
+   574→  ctx.ellipse(w * 0.82, h + 70, w * 0.55, 120, 0, 0, Math.PI * 2)
+   575→  ctx.fill()
+   576→
+   577→  // tiny flowers on the hills 🌸
+   578→  for (let i = 0; i < 5; i++) {
+   579→    const fx = w * ((i + 0.5) / 5)
+   580→    const fy = h - 26 + (i % 2) * 7
+   581→    ctx.fillStyle = i % 2 === 0 ? '#ff9ec4' : '#ffffff'
+   582→    for (let p = 0; p < 5; p++) {
+   583→      const a = (p / 5) * Math.PI * 2 + i
+   584→      circle(ctx, fx + Math.cos(a) * 6, fy + Math.sin(a) * 6, 4.5)
+   585→    }
+   586→    ctx.fillStyle = COLORS.sun
+   587→    circle(ctx, fx, fy, 4)
+   588→  }
+   589→}
+   590→
+   591→/* 🚀 THE PLAYER — a friendly rocket with a smiley pilot.
+   592→   Want a different character? Redraw the shapes in this function! */
+   593→function drawPlayer(ctx: CanvasRenderingContext2D, g: GameData) {
+   594→  const p = g.player
+   595→  const py = g.h - 96 + Math.sin(g.time * 2.2) * 4 // gentle hover bob
+   596→  ctx.save()
+   597→  ctx.translate(p.x, py)
+   598→  ctx.rotate(p.tilt)
+   599→
+   600→  // 🔥 flame (drawn first so it sits behind the rocket) — flickers happily
+   601→  const fl = 1 + Math.sin(g.time * 24) * 0.18
+   602→  ctx.fillStyle = COLORS.flame
+   603→  ctx.beginPath()
+   604→  ctx.ellipse(0, 42, 9 * fl, 16 * fl, 0, 0, Math.PI * 2)
+   605→  ctx.fill()
+   606→  ctx.fillStyle = '#ff9f43'
+   607→  ctx.beginPath()
+   608→  ctx.ellipse(0, 47, 5 * fl, 9 * fl, 0, 0, Math.PI * 2)
+   609→  ctx.fill()
+   610→
+   611→  // fins
+   612→  ctx.fillStyle = COLORS.playerTrim
+   613→  ctx.beginPath()
+   614→  ctx.moveTo(-14, 12)
+   615→  ctx.quadraticCurveTo(-30, 26, -26, 38)
+   616→  ctx.quadraticCurveTo(-18, 30, -10, 28)
+   617→  ctx.closePath()
+   618→  ctx.fill()
+   619→  ctx.beginPath()
+   620→  ctx.moveTo(14, 12)
+   621→  ctx.quadraticCurveTo(30, 26, 26, 38)
+   622→  ctx.quadraticCurveTo(18, 30, 10, 28)
+   623→  ctx.closePath()
+   624→  ctx.fill()
+   625→
+   626→  // body
+   627→  roundRectPath(ctx, -18, -34, 36, 68, 18)
+   628→  ctx.fillStyle = COLORS.playerBody
+   629→  ctx.fill()
+   630→  ctx.lineWidth = 3
+   631→  ctx.strokeStyle = COLORS.playerTrim
+   632→  ctx.stroke()
+   633→
+   634→  // round window with the pilot's happy face
+   635→  ctx.beginPath()
+   636→  ctx.arc(0, -4, 12, 0, Math.PI * 2)
+   637→  ctx.fillStyle = COLORS.playerWindow
+   638→  ctx.fill()
+   639→  ctx.strokeStyle = COLORS.playerTrim
+   640→  ctx.stroke()
+   641→  ctx.fillStyle = COLORS.face
+   642→  circle(ctx, -4, -8, 1.9)
+   643→  circle(ctx, 4, -8, 1.9)
+   644→  ctx.strokeStyle = COLORS.face
+   645→  ctx.lineWidth = 2
+   646→  ctx.beginPath()
+   647→  ctx.arc(0, -6, 5.5, Math.PI * 0.2, Math.PI * 0.8)
+   648→  ctx.stroke()
+   649→  ctx.fillStyle = 'rgba(255,110,150,0.4)'
+   650→  circle(ctx, -8.5, -2, 2.2)
+   651→  circle(ctx, 8.5, -2, 2.2)
+   652→
+   653→  // antenna with a golden ball
+   654→  ctx.strokeStyle = COLORS.playerTrim
+   655→  ctx.lineWidth = 3
+   656→  ctx.beginPath()
+   657→  ctx.moveTo(0, -34)
+   658→  ctx.lineTo(0, -44)
+   659→  ctx.stroke()
+   660→  ctx.fillStyle = COLORS.flame
+   661→  circle(ctx, 0, -47, 4.5)
+   662→  ctx.fillStyle = 'rgba(255,255,255,0.8)'
+   663→  circle(ctx, -1.5, -48.5, 1.4)
+   664→
+   665→  ctx.restore()
+   666→}
+   667→
+   668→/* 👾 THE MONSTERS — three silly, smiling kinds (never scary!).
+   669→   kind 0 = round blob with antennae · kind 1 = balloon · kind 2 = star critter */
+   670→function drawMonster(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
+   671→  const r = m.r
+   672→  ctx.save()
+   673→  ctx.translate(m.x, m.y)
+   674→  ctx.rotate(Math.sin(m.wob) * 0.09) // gentle wobble
+   675→  const outline = 'rgba(0,0,0,0.12)'
+   676→
+   677→  if (m.kind === 0) {
+   678→    /* round blob */
+   679→    // antennae with golden balls
+   680→    ctx.strokeStyle = outline
+   681→    ctx.lineWidth = 3
+   682→    ctx.lineCap = 'round'
+   683→    for (const side of [-1, 1]) {
+   684→      ctx.beginPath()
+   685→      ctx.moveTo(side * r * 0.4, -r * 0.75)
+   686→      ctx.lineTo(side * r * 0.55, -r * 1.25)
+   687→      ctx.stroke()
+   688→      ctx.fillStyle = COLORS.sun
+   689→      circle(ctx, side * r * 0.58, -r * 1.32, r * 0.16)
+   690→    }
+   691→    // body
+   692→    ctx.beginPath()
+   693→    ctx.arc(0, 0, r, 0, Math.PI * 2)
+   694→    ctx.fillStyle = m.color
+   695→    ctx.fill()
+   696→    ctx.strokeStyle = outline
+   697→    ctx.lineWidth = 3
+   698→    ctx.stroke()
+   699→    // shine
+   700→    ctx.fillStyle = 'rgba(255,255,255,0.35)'
+   701→    circle(ctx, -r * 0.35, -r * 0.42, r * 0.16)
+   702→    happyFace(ctx, r, m.blink < 0 && m.blink > -0.15)
+   703→  } else if (m.kind === 1) {
+   704→    /* balloon on a string */
+   705→    ctx.strokeStyle = 'rgba(0,0,0,0.25)'
+   706→    ctx.lineWidth = 2
+   707→    ctx.beginPath()
+   708→    ctx.moveTo(0, r)
+   709→    ctx.quadraticCurveTo(Math.sin(time * 3 + m.wob) * 8, r * 1.5, 0, r * 1.9)
+   710→    ctx.stroke()
+   711→    ctx.beginPath()
+   712→    ctx.ellipse(0, 0, r * 0.82, r, 0, 0, Math.PI * 2)
+   713→    ctx.fillStyle = m.color
+   714→    ctx.fill()
+   715→    ctx.strokeStyle = outline
+   716→    ctx.lineWidth = 3
+   717→    ctx.stroke()
+   718→    // knot
+   719→    ctx.fillStyle = m.color
+   720→    ctx.beginPath()
+   721→    ctx.moveTo(-5, r)
+   722→    ctx.lineTo(5, r)
+   723→    ctx.lineTo(0, r - 8)
+   724→    ctx.closePath()
+   725→    ctx.fill()
+   726→    ctx.fillStyle = 'rgba(255,255,255,0.35)'
+   727→    circle(ctx, -r * 0.3, -r * 0.4, r * 0.14)
+   728→    happyFace(ctx, r * 0.95, m.blink < 0 && m.blink > -0.15)
+   729→  } else {
+   730→    /* star critter ⭐ */
+   731→    starPath(ctx, 0, 0, r * 1.3, r * 0.62, 5, -Math.PI / 2 + Math.sin(m.wob) * 0.15)
+   732→    ctx.fillStyle = m.color
+   733→    ctx.fill()
+   734→    ctx.strokeStyle = outline
+   735→    ctx.lineWidth = 3
+   736→    ctx.lineJoin = 'round'
+   737→    ctx.stroke()
+   738→    happyFace(ctx, r * 0.75, m.blink < 0 && m.blink > -0.15)
+   739→  }
+   740→  ctx.restore()
+   741→}
+   742→
+   743→/* 🫧 the bubbles & stars you shoot */
+   744→function drawShot(ctx: CanvasRenderingContext2D, s: Shot) {
+   745→  if (s.kind === 'bubble') {
+   746→    ctx.beginPath()
+   747→    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
+   748→    ctx.fillStyle = 'rgba(205,242,255,0.85)'
+   749→    ctx.fill()
+   750→    ctx.strokeStyle = 'rgba(110,190,235,0.95)'
+   751→    ctx.lineWidth = 2
+   752→    ctx.stroke()
+   753→    ctx.fillStyle = 'rgba(255,255,255,0.85)'
+   754→    circle(ctx, s.x - 3.5, s.y - 3.5, 3)
+   755→  } else {
+   756→    starPath(ctx, s.x, s.y, s.r + 2, (s.r + 2) * 0.45, 5, s.wob * 2 - Math.PI / 2)
+   757→    ctx.fillStyle = COLORS.sun
+   758→    ctx.fill()
+   759→    ctx.strokeStyle = '#e8a800'
+   760→    ctx.lineWidth = 2
+   761→    ctx.lineJoin = 'round'
+   762→    ctx.stroke()
+   763→  }
+   764→}
+   765→
+   766→/* ═══════════════════════════════════════════════════════════════════════
+   767→   🎉 PARTICLES — confetti, sparkles, pop-rings & floating text
+   768→   ═══════════════════════════════════════════════════════════════════════ */
+   769→function addText(g: GameData, x: number, y: number, text: string, color: string) {
+   770→  g.parts.push({
+   771→    x, y, vx: 0, vy: -48, life: 1, maxLife: 1, color, size: 0, rot: 0, vr: 0, kind: 'text', text,
+   772→  })
+   773→}
+   774→
+   775→/* the big happy burst when a monster pops! */
+   776→function burst(g: GameData, x: number, y: number, color: string) {
+   777→  // expanding ring
+   778→  g.parts.push({ x, y, vx: 0, vy: 0, life: 0.35, maxLife: 0.35, color: '#ffd93d', size: 12, rot: 0, vr: 0, kind: 'ring' })
+   779→  // confetti pieces
+   780→  for (let i = 0; i < 13; i++) {
+   781→    g.parts.push({
+   782→      x, y,
+   783→      vx: rand(-170, 170), vy: rand(-280, -60),
+   784→      life: rand(0.7, 1.15), maxLife: 1.15,
+   785→      color: pick(COLORS.confetti),
+   786→      size: rand(5, 9),
+   787→      rot: rand(0, 6), vr: rand(-10, 10),
+   788→      kind: 'confetti',
+   789→    })
+   790→  }
+   791→  // golden sparkles
+   792→  for (let i = 0; i < 6; i++) {
+   793→    g.parts.push({
+   794→      x, y,
+   795→      vx: rand(-90, 90), vy: rand(-140, -10),
+   796→      life: rand(0.4, 0.8), maxLife: 0.8,
+   797→      color: pick(['#fff8c9', '#ffd93d', '#ffffff']),
+   798→      size: rand(2.5, 4.5),
+   799→      rot: rand(0, 6), vr: rand(-6, 6),
+   800→      kind: 'sparkle',
+   801→    })
+   802→  }
+   803→  addText(g, x, y - 6, '+1 ⭐', '#ff8fb1')
+   804→  // keep the particle list short & sweet
+   805→  if (g.parts.length > 260) g.parts.splice(0, g.parts.length - 260)
+   806→}
+   807→
+   808→/* giant confetti storm for the final victory screen */
+   809→function bigCelebration(g: GameData) {
+   810→  for (let i = 0; i < 50; i++) {
+   811→    g.parts.push({
+   812→      x: rand(0, g.w), y: rand(-g.h * 0.4, -10),
+   813→      vx: rand(-60, 60), vy: rand(60, 170),
+   814→      life: rand(1.6, 2.8), maxLife: 2.8,
+   815→      color: pick(COLORS.confetti),
+   816→      size: rand(6, 11),
+   817→      rot: rand(0, 6), vr: rand(-8, 8),
+   818→      kind: 'confetti',
+   819→    })
+   820→  }
+   821→}
+   822→
+   823→function updateParticles(g: GameData, dt: number) {
+   824→  for (let i = g.parts.length - 1; i >= 0; i--) {
+   825→    const p = g.parts[i]
+   826→    p.life -= dt
+   827→    if (p.life <= 0) {
+   828→      g.parts.splice(i, 1)
+   829→      continue
+   830→    }
+   831→    p.x += p.vx * dt
+   832→    p.y += p.vy * dt
+   833→    p.rot += p.vr * dt
+   834→    if (p.kind === 'confetti') {
+   835→      p.vy += 420 * dt // confetti tumbles down
+   836→      p.vx *= 1 - 1.2 * dt
+   837→    } else if (p.kind === 'sparkle') {
+   838→      p.vy += 140 * dt
+   839→    } else if (p.kind === 'ring') {
+   840→      p.size += 190 * dt // ring grows outward
+   841→    }
+   842→  }
+   843→}
+   844→
+   845→function drawParticles(ctx: CanvasRenderingContext2D, g: GameData) {
+   846→  for (const p of g.parts) {
+   847→    const a = clamp(p.life / p.maxLife, 0, 1)
+   848→    ctx.globalAlpha = a
+   849→    if (p.kind === 'confetti') {
+   850→      ctx.save()
+   851→      ctx.translate(p.x, p.y)
+   852→      ctx.rotate(p.rot)
+   853→      ctx.fillStyle = p.color
+   854→      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.62)
+   855→      ctx.restore()
+   856→    } else if (p.kind === 'sparkle') {
+   857→      ctx.fillStyle = p.color
+   858→      starPath(ctx, p.x, p.y, p.size + 2, (p.size + 2) * 0.4, 4, p.rot)
+   859→      ctx.fill()
+   860→    } else if (p.kind === 'ring') {
+   861→      ctx.strokeStyle = p.color
+   862→      ctx.lineWidth = 3.5 * a
+   863→      ctx.beginPath()
+   864→      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
+   865→      ctx.stroke()
+   866→    } else if (p.kind === 'text' && p.text) {
+   867→      ctx.font = `bold 22px ${FONT}`
+   868→      ctx.textAlign = 'center'
+   869→      ctx.textBaseline = 'middle'
+   870→      ctx.lineWidth = 4
+   871→      ctx.strokeStyle = 'rgba(255,255,255,0.9)'
+   872→      ctx.strokeText(p.text, p.x, p.y)
+   873→      ctx.fillStyle = p.color
+   874→      ctx.fillText(p.text, p.x, p.y)
+   875→    }
+   876→    ctx.globalAlpha = 1
+   877→  }
+   878→}
+   879→
+   880→/* everything currently on screen, painted in the right order */
+   881→function render(ctx: CanvasRenderingContext2D, g: GameData) {
+   882→  drawBackground(ctx, g)
+   883→  for (const m of g.monsters) drawMonster(ctx, m, g.time)
+   884→  for (const s of g.shots) drawShot(ctx, s)
+   885→  drawPlayer(ctx, g)
+   886→  drawParticles(ctx, g)
+   887→}
+   888→
+   889→/* ═══════════════════════════════════════════════════════════════════════
+   890→   🕹 THE GAME COMPONENT — wires everything together
+   891→   ═══════════════════════════════════════════════════════════════════════ */
+   892→export default function Home() {
+   893→  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+   894→  const wrapRef = useRef<HTMLDivElement | null>(null)
+   895→  const gRef = useRef<GameData | null>(null)
+   896→  const audioRef = useRef<GameAudio | null>(null)
+   897→  const controlsRef = useRef<{ start: (mode: Mode) => void; next: () => void; toggleMute: () => void; toMenu: () => void } | null>(null)
+   898→
+   899→  // React state = only the pretty HUD & overlay screens (the game itself
+   900→  // runs at 60fps inside refs so React never slows it down)
+   901→  const [ui, setUi] = useState<UIState>('menu')
+   902→  // NOTE: the first render must match the server exactly, so the goal/hearts
+   903→  // here are always the kids values — the loop corrects them right after mounting.
+   904→  const [hud, setHud] = useState({
+   905→    level: 0,
+   906→    popped: 0,
+   907→    goal: MODES.kids.levels[0].goal,
+   908→    hearts: MODES.kids.hearts,
+   909→    maxHearts: MODES.kids.hearts,
+   910→    score: 0,
+   911→    mode: 'kids' as Mode,
+   912→  })
+   913→  const [stars, setStars] = useState(3)
+   914→  const [muted, setMuted] = useState(false)
+   915→  const [hurtKey, setHurtKey] = useState(0) // changing this re-plays the heart-shake
+   916→  const [lastMode, setLastMode] = useState<Mode | null>(null) // ring the mode you played last time
+   917→
+   918→  // remember which mode was played last visit (purely cosmetic highlight)
+   919→  useEffect(() => {
+   920→    const id = setTimeout(() => {
+   921→      try {
+   922→        const saved = localStorage.getItem('bubblePopMode')
+   923→        if (saved === 'kids' || saved === 'adults') setLastMode(saved)
+   924→      } catch {
+   925→        /* private browsing — no problem */
+   926→      }
+   927→    }, 0)
+   928→    return () => clearTimeout(id)
+   929→  }, [])
+   930→
+   931→  useEffect(() => {
+   932→    const canvas = canvasRef.current
+   933→    const wrap = wrapRef.current
+   934→    if (!canvas || !wrap) return
+   935→    const ctx = canvas.getContext('2d')
+   936→    if (!ctx) return
+   937→
+   938→    const g = freshGame()
+   939→    gRef.current = g
+   940→    // Debug handle for curious grown-ups: open the browser console and type
+   941→    // __bubbleGame to peek at (or tweak!) the live game state.
+   942→    if (typeof window !== 'undefined') (window as unknown as { __bubbleGame: GameData }).__bubbleGame = g
+   943→    const audio = new GameAudio()
+   944→    audioRef.current = audio
+   945→    const keys = { left: false, right: false, shoot: false }
+   946→    const drag = { active: false, id: -1, startX: 0, t0: 0, moved: false }
+   947→
+   948→    /* keep the canvas crisp on every screen size */
+   949→    const resize = () => {
+   950→      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+   951→      g.w = wrap.clientWidth
+   952→      g.h = wrap.clientHeight
+   953→      canvas.width = Math.round(g.w * dpr)
+   954→      canvas.height = Math.round(g.h * dpr)
+   955→      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+   956→      g.player.x = clamp(g.player.x, 40, g.w - 40)
+   957→    }
+   958→    resize()
+   959→    const ro = new ResizeObserver(resize)
+   960→    ro.observe(wrap)
+   961→
+   962→    /* copy game values into React state — but only when they actually change */
+   963→    const syncHud = () => {
+   964→      setHud((prev) => {
+   965→        const goal = goalOf(g)
+   966→        const maxHearts = MODES[g.mode].hearts
+   967→        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode)
+   968→          return prev
+   969→        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode }
+   970→      })
+   971→    }
+   972→
+   973→    /* 🫧 fire a bubble (or a star!) */
+   974→    const shootNow = () => {
+   975→      if (g.state !== 'playing' || g.player.cool > 0) return
+   976→      g.player.cool = MODES[g.mode].shootCooldown
+   977→      g.shotIndex++
+   978→      const kind: 'bubble' | 'star' = g.shotIndex % 2 === 1 ? 'bubble' : 'star'
+   979→      const py = g.h - 96
+   980→      g.shots.push({ x: g.player.x, y: py - 40, vy: -PLAYER.shotSpeed, r: kind === 'star' ? 12 : 10, kind, wob: rand(0, 6) })
+   981→      audio.shoot()
+   982→    }
+   983→
+   984→    /* start a (new) level with a cheerful GO! banner */
+   985→    const beginLevel = () => {
+   986→      g.popped = 0
+   987→      g.monsters.length = 0
+   988→      g.shots.length = 0
+   989→      g.spawnT = 0.6
+   990→      g.player.x = g.w / 2
+   991→      g.player.cool = 0
+   992→      g.dragging = false
+   993→      g.targetX = null
+   994→      g.state = 'playing'
+   995→      setUi('playing')
+   996→      addText(g, g.w / 2, g.h * 0.35, `${levelsOf(g.mode)[g.level].name} — GO!`, '#ff8fb1')
+   997→      audio.startMusic(MODES[g.mode].fastMusic)
+   998→      syncHud()
+   999→    }
+  1000→
+  1001→    const start = (mode: Mode) => {
+  1002→      audio.init()
+  1003→      audio.click()
+  1004→      g.mode = mode
+  1005→      g.level = 0
+  1006→      g.score = 0
+  1007→      g.hearts = MODES[mode].hearts
+  1008→      try {
+  1009→        localStorage.setItem('bubblePopMode', mode) // remember it for next visit
+  1010→      } catch {
+  1011→        /* private browsing — no problem */
+  1012→      }
+  1013→      beginLevel()
+  1014→    }
+  1015→
+  1016→    const next = () => {
+  1017→      audio.click()
+  1018→      g.level++
+  1019→      g.hearts = MODES[g.mode].hearts // fresh hearts every level — kind & easy!
+  1020→      beginLevel()
+  1021→    }
+  1022→
+  1023→    /* go back to the menu (lets you switch between kids & grown-ups mode) */
+  1024→    const toMenu = () => {
+  1025→      audio.click()
+  1026→      g.state = 'menu'
+  1027→      g.monsters.length = 0
+  1028→      g.shots.length = 0
+  1029→      audio.stopMusic()
+  1030→      setUi('menu')
+  1031→      syncHud()
+  1032→    }
+  1033→
+  1034→    /* level finished! pop the leftovers into confetti and show the reward */
+  1035→    const completeLevel = () => {
+  1036→      for (const m of g.monsters) {
+  1037→        burst(g, m.x, m.y, m.color)
+  1038→        g.score++
+  1039→      }
+  1040→      g.monsters.length = 0
+  1041→      g.shots.length = 0
+  1042→      const maxHearts = MODES[g.mode].hearts
+  1043→      const earned = g.hearts >= maxHearts ? 3 : g.hearts >= Math.ceil(maxHearts / 2) ? 2 : 1
+  1044→      setStars(earned)
+  1045→      if (g.level >= levelsOf(g.mode).length - 1) {
+  1046→        bigCelebration(g)
+  1047→        g.state = 'won'
+  1048→        setUi('won')
+  1049→        audio.stopMusic()
+  1050→        audio.win()
+  1051→      } else {
+  1052→        g.state = 'levelClear'
+  1053→        setUi('levelClear')
+  1054→        audio.levelUp()
+  1055→      }
+  1056→      syncHud()
+  1057→    }
+  1058→
+  1059→    /* a monster reached the ground — lose one heart, stay cheerful */
+  1060→    const loseHeart = (m: Monster) => {
+  1061→      g.hearts--
+  1062→      setHurtKey((k) => k + 1)
+  1063→      audio.oops()
+  1064→      addText(g, clamp(m.x, 60, g.w - 60), g.h - 150, 'Oops!', '#ff8fb1')
+  1065→      if (g.hearts <= 0) {
+  1066→        g.state = 'over'
+  1067→        setUi('over')
+  1068→        audio.stopMusic()
+  1069→        audio.gameOverJingle()
+  1070→      }
+  1071→      syncHud()
+  1072→    }
+  1073→
+  1074→    /* 👾 make a new silly monster at the top of the sky */
+  1075→    const spawnMonster = (L: LevelConfig) => {
+  1076→      const [rMin, rMax] = MODES[g.mode].monsterRadius // grown-ups get tinier targets!
+  1077→      const r = rand(rMin, rMax)
+  1078→      const baseX = rand(r + 12, g.w - r - 12)
+  1079→      g.monsters.push({
+  1080→        x: baseX,
+  1081→        baseX,
+  1082→        y: -r - 12,
+  1083→        r,
+  1084→        color: pick(COLORS.monsters),
+  1085→        kind: Math.floor(rand(0, 3)),
+  1086→        wob: rand(0, Math.PI * 2),
+  1087→        wobSpeed: rand(1.5, 3),
+  1088→        drift: L.drift * rand(0.6, 1.2),
+  1089→        speedMul: rand(0.85, 1.15),
+  1090→        blink: rand(1, 3),
+  1091→      })
+  1092→    }
+  1093→
+  1094→    /* ════════ THE HEARTBEAT: runs ~60 times per second ════════ */
+  1095→    const update = (dt: number) => {
+  1096→      g.time += dt
+  1097→      // clouds drift in every state (even behind the menus — so cozy)
+  1098→      for (const c of g.clouds) {
+  1099→        c.x -= c.v * dt
+  1100→        if (c.x < -120) {
+  1101→          c.x = g.w + 120
+  1102→          c.y = rand(30, g.h * 0.35)
+  1103→        }
+  1104→      }
+  1105→      updateParticles(g, dt)
+  1106→      if (g.state !== 'playing') return
+  1107→
+  1108→      /* ── player movement ── */
+  1109→      const p = g.player
+  1110→      let vx = 0
+  1111→      if (keys.left) vx -= PLAYER.speed
+  1112→      if (keys.right) vx += PLAYER.speed
+  1113→      if (g.dragging && g.targetX !== null) {
+  1114→        vx = clamp((g.targetX - p.x) * 10, -PLAYER.speed * 1.4, PLAYER.speed * 1.4)
+  1115→      }
+  1116→      p.x = clamp(p.x + vx * dt, 40, g.w - 40)
+  1117→      const lean = clamp(vx / PLAYER.speed, -1, 1) * 0.22
+  1118→      p.tilt += (lean - p.tilt) * Math.min(1, dt * 10)
+  1119→      p.cool -= dt
+  1120→      if (keys.shoot) shootNow()
+  1121→
+  1122→      /* ── spawning: slow at first, gently speeding up ── */
+  1123→      const L = levelsOf(g.mode)[g.level]
+  1124→      const goal = goalOf(g)
+  1125→      const progress = Math.min(1, g.popped / goal)
+  1126→      g.spawnT -= dt
+  1127→      if (g.spawnT <= 0 && g.monsters.length < L.maxOnScreen) {
+  1128→        spawnMonster(L)
+  1129→        const gap = lerp(L.spawnEvery, L.spawnEveryMin, progress) * (g.turbo ? 0.12 : 1) * rand(0.75, 1.25)
+  1130→        g.spawnT = gap
+  1131→      }
+  1132→
+  1133→      /* ── monsters wobbling down ── */
+  1134→      const fall = lerp(L.fallSpeed, L.fallSpeedMax, progress)
+  1135→      for (let i = g.monsters.length - 1; i >= 0; i--) {
+  1136→        const m = g.monsters[i]
+  1137→        m.y += fall * m.speedMul * dt
+  1138→        m.wob += m.wobSpeed * dt
+  1139→        m.x = clamp(m.baseX + Math.sin(m.wob) * m.drift, m.r, g.w - m.r)
+  1140→        m.blink -= dt
+  1141→        if (m.blink < -0.15) m.blink = rand(2, 4)
+  1142→        if (m.y - m.r > g.h - 14) {
+  1143→          g.monsters.splice(i, 1)
+  1144→          loseHeart(m)
+  1145→          if (g.state !== 'playing') return
+  1146→        }
+  1147→      }
+  1148→
+  1149→      /* ── bubbles flying up & popping monsters ── */
+  1150→      for (let i = g.shots.length - 1; i >= 0; i--) {
+  1151→        const s = g.shots[i]
+  1152→        s.y += s.vy * dt
+  1153→        s.wob += dt * 6
+  1154→        s.x += Math.sin(s.wob) * 9 * dt
+  1155→        if (s.y < -30) {
+  1156→          g.shots.splice(i, 1)
+  1157→          continue
+  1158→        }
+  1159→        for (let j = g.monsters.length - 1; j >= 0; j--) {
+  1160→          const m = g.monsters[j]
+  1161→          const dx = s.x - m.x
+  1162→          const dy = s.y - m.y
+  1163→          const rr = m.r + s.r // generous hitboxes = happy kids
+  1164→          if (dx * dx + dy * dy < rr * rr) {
+  1165→            g.shots.splice(i, 1)
+  1166→            g.monsters.splice(j, 1)
+  1167→            burst(g, m.x, m.y, m.color) // confetti + sparkles! 🎉
+  1168→            g.popped++
+  1169→            g.score++
+  1170→            audio.pop()
+  1171→            if (g.popped >= goal) completeLevel()
+  1172→            break
+  1173→          }
+  1174→        }
+  1175→        if (g.state !== 'playing') return
+  1176→      }
+  1177→      syncHud()
+  1178→    }
+  1179→
+  1180→    /* ── keyboard controls ── */
+  1181→    const gameKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Spacebar']
+  1182→    const onKeyDown = (e: KeyboardEvent) => {
+  1183→      if (gameKeys.includes(e.key)) e.preventDefault() // stop the page from scrolling
+  1184→      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true
+  1185→      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true
+  1186→      if (e.key === ' ' || e.key === 'Spacebar' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+  1187→        keys.shoot = true
+  1188→        audio.init()
+  1189→      }
+  1190→    }
+  1191→    const onKeyUp = (e: KeyboardEvent) => {
+  1192→      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false
+  1193→      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false
+  1194→      if (e.key === ' ' || e.key === 'Spacebar' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keys.shoot = false
+  1195→    }
+  1196→    const onBlur = () => {
+  1197→      keys.left = keys.right = keys.shoot = false // no stuck keys when tab loses focus
+  1198→    }
+  1199→    window.addEventListener('keydown', onKeyDown)
+  1200→    window.addEventListener('keyup', onKeyUp)
+  1201→    window.addEventListener('blur', onBlur)
+  1202→
+  1203→    /* ── touch & mouse controls (pointer events cover both) ──
+  1204→       drag = move the rocket · quick tap = shoot 🫧                */
+  1205→    const rectX = (e: PointerEvent) => e.clientX - canvas.getBoundingClientRect().left
+  1206→    const onPointerDown = (e: PointerEvent) => {
+  1207→      audio.init()
+  1208→      if (drag.active) return
+  1209→      drag.active = true
+  1210→      drag.id = e.pointerId
+  1211→      drag.startX = rectX(e)
+  1212→      drag.t0 = performance.now()
+  1213→      drag.moved = false
+  1214→      canvas.setPointerCapture(e.pointerId)
+  1215→      if (g.state === 'playing') {
+  1216→        g.dragging = true
+  1217→        g.targetX = drag.startX
+  1218→      }
+  1219→    }
+  1220→    const onPointerMove = (e: PointerEvent) => {
+  1221→      if (!drag.active || e.pointerId !== drag.id) return
+  1222→      const x = rectX(e)
+  1223→      if (Math.abs(x - drag.startX) > 12) drag.moved = true
+  1224→      if (g.state === 'playing' && g.dragging) g.targetX = x
+  1225→    }
+  1226→    const onPointerUp = (e: PointerEvent) => {
+  1227→      if (!drag.active || e.pointerId !== drag.id) return
+  1228→      drag.active = false
+  1229→      g.dragging = false
+  1230→      const quick = performance.now() - drag.t0 < 300
+  1231→      if (g.state === 'playing' && !drag.moved && quick) shootNow() // it was a tap!
+  1232→    }
+  1233→    const onPointerCancel = () => {
+  1234→      drag.active = false
+  1235→      g.dragging = false
+  1236→    }
+  1237→    const onContextMenu = (e: Event) => e.preventDefault()
+  1238→    canvas.addEventListener('pointerdown', onPointerDown)
+  1239→    canvas.addEventListener('pointermove', onPointerMove)
+  1240→    canvas.addEventListener('pointerup', onPointerUp)
+  1241→    canvas.addEventListener('pointercancel', onPointerCancel)
+  1242→    canvas.addEventListener('contextmenu', onContextMenu)
+  1243→
+  1244→    /* buttons in the overlays call these through the ref */
+  1245→    const toggleMute = () => {
+  1246→      audio.init()
+  1247→      audio.setMuted(!audio.muted)
+  1248→      setMuted(audio.muted)
+  1249→      audio.click()
+  1250→    }
+  1251→    controlsRef.current = { start, next, toggleMute, toMenu }
+  1252→
+  1253→    /* ── go! ── */
+  1254→    let raf = 0
+  1255→    let last = performance.now()
+  1256→    const loop = (now: number) => {
+  1257→      const dt = Math.min(0.05, (now - last) / 1000) // clamp dt so pauses never cause jumps
+  1258→      last = now
+  1259→      update(dt)
+  1260→      render(ctx, g)
+  1261→      raf = requestAnimationFrame(loop)
+  1262→    }
+  1263→    raf = requestAnimationFrame(loop)
+  1264→
+  1265→    return () => {
+  1266→      cancelAnimationFrame(raf)
+  1267→      ro.disconnect()
+  1268→      window.removeEventListener('keydown', onKeyDown)
+  1269→      window.removeEventListener('keyup', onKeyUp)
+  1270→      window.removeEventListener('blur', onBlur)
+  1271→      canvas.removeEventListener('pointerdown', onPointerDown)
+  1272→      canvas.removeEventListener('pointermove', onPointerMove)
+  1273→      canvas.removeEventListener('pointerup', onPointerUp)
+  1274→      canvas.removeEventListener('pointercancel', onPointerCancel)
+  1275→      canvas.removeEventListener('contextmenu', onContextMenu)
+  1276→      audio.stopMusic()
+  1277→      controlsRef.current = null
+  1278→    }
+  1279→  }, [])
+  1280→
+  1281→  const goal = hud.goal
+  1282→  const pct = Math.min(100, Math.round((hud.popped / goal) * 100))
+  1283→
+  1284→  return (
+  1285→    <main
+  1286→      className="flex min-h-[100dvh] flex-col bg-amber-50"
+  1287→      style={{ fontFamily: FONT, WebkitTapHighlightColor: 'transparent' }}
+  1288→    >
+  1289→      {/* little CSS animations used by the overlays & HUD */}
+  1290→      <style>{`
+  1291→        @keyframes pop-in-kf { 0% { transform: scale(.55); opacity: 0 } 65% { transform: scale(1.07) } 100% { transform: scale(1); opacity: 1 } }
+  1292→        .pop-in { animation: pop-in-kf .38s cubic-bezier(.34,1.56,.64,1) both }
+  1293→        @keyframes star-pop-kf { 0% { transform: scale(0) rotate(-40deg); opacity: 0 } 70% { transform: scale(1.3) rotate(10deg); opacity: 1 } 100% { transform: scale(1) rotate(0deg) } }
+  1294→        .star-pop { animation: star-pop-kf .55s cubic-bezier(.34,1.56,.64,1) both }
+  1295→        @keyframes heart-shake-kf { 0%,100% { transform: translateX(0) } 20% { transform: translateX(-7px) } 40% { transform: translateX(7px) } 60% { transform: translateX(-5px) } 80% { transform: translateX(5px) } }
+  1296→        .heart-shake { animation: heart-shake-kf .5s ease }
+  1297→        @keyframes score-pop-kf { 0% { transform: scale(1.7) } 100% { transform: scale(1) } }
+  1298→        .score-pop { display:inline-block; animation: score-pop-kf .3s ease }
+  1299→        @keyframes floaty-kf { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
+  1300→        .floaty { animation: floaty-kf 2.4s ease-in-out infinite }
+  1301→        @keyframes wiggle-kf { 0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(4deg) } }
+  1302→        .wiggle { animation: wiggle-kf 1.2s ease-in-out infinite }
+  1303→      `}</style>
+  1304→
+  1305→      {/* ════════ THE GAME WORLD ════════ */}
+  1306→      <div
+  1307→        ref={wrapRef}
+  1308→        className="relative min-h-0 flex-1 select-none overflow-hidden"
+  1309→        style={{ touchAction: 'none' }}
+  1310→      >
+  1311→        <canvas ref={canvasRef} className="absolute inset-0 block h-full w-full" aria-label="Bubble Pop Adventure game" role="img" />
+  1312→
+  1313→        {/* ── HUD: hearts (top-left) ── */}
+  1314→        <div className="pointer-events-none absolute left-3 top-3 z-30">
+  1315→          <div key={hurtKey} className={`flex gap-1 rounded-full bg-white/85 px-4 py-2 shadow-md ${hud.hearts < hud.maxHearts ? 'heart-shake' : ''}`}>
+  1316→            {Array.from({ length: MODES[hud.mode].hearts }, (_, i) => (
+  1317→              <Heart
+  1318→                key={i}
+  1319→                size={26}
+  1320→                aria-hidden
+  1321→                className={i < hud.hearts ? 'fill-rose-500 text-rose-500' : 'fill-gray-200 text-gray-300'}
+  1322→              />
+  1323→            ))}
+  1324→            <span className="sr-only">{hud.hearts} of {MODES[hud.mode].hearts} hearts left</span>
+  1325→          </div>
+  1326→        </div>
+  1327→
+  1328→        {/* ── HUD: level & progress (top-center; below hearts on phones) ── */}
+  1329→        <div className="pointer-events-none absolute left-1/2 top-[68px] z-10 w-32 -translate-x-1/2 rounded-2xl bg-white/85 px-3 py-2 text-center shadow-md sm:top-3 sm:w-44 sm:px-4">
+  1330→          <div className="text-sm font-extrabold text-amber-600 sm:text-base">{MODES[hud.mode].levels[hud.level].name}</div>
+  1331→          <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-amber-100">
+  1332→            <div
+  1333→              className="h-full rounded-full bg-gradient-to-r from-pink-400 to-amber-400 transition-all duration-300"
+  1334→              style={{ width: `${pct}%` }}
+  1335→            />
+  1336→          </div>
+  1337→          <div className="mt-0.5 text-xs font-bold text-gray-500">
+  1338→            {hud.popped} / {goal} popped
+  1339→          </div>
+  1340→        </div>
+  1341→
+  1342→        {/* ── HUD: score + mute button (top-right, always tappable) ── */}
+  1343→        <div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-2">
+  1344→          <div className="pointer-events-none flex items-center gap-1.5 rounded-full bg-white/85 px-4 py-2 shadow-md">
+  1345→            <Star size={24} aria-hidden className="fill-amber-400 text-amber-400" />
+  1346→            <span key={hud.score} className="score-pop text-xl font-extrabold text-amber-600">
+  1347→              {hud.score}
+  1348→            </span>
+  1349→            <span className="sr-only">stars collected</span>
+  1350→          </div>
+  1351→          <button
+  1352→            onClick={(e) => {
+  1353→              e.currentTarget.blur()
+  1354→              controlsRef.current?.toggleMute()
+  1355→            }}
+  1356→            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-md transition active:scale-90"
+  1357→            aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
+  1358→          >
+  1359→            {muted ? <VolumeX size={24} className="text-gray-500" /> : <Volume2 size={24} className="text-emerald-600" />}
+  1360→          </button>
+  1361→        </div>
+  1362→
+  1363→        {/* tiny desktop hint */}
+  1364→        <div className="pointer-events-none absolute bottom-2 left-3 z-10 hidden text-xs font-bold text-slate-600/70 sm:block">
+  1365→          ← → move · space = pop!
+  1366→        </div>
+  1367→
+  1368→        {/* ════════ OVERLAY: START MENU ════════ */}
+  1369→        {ui === 'menu' && (
+  1370→          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 p-4 backdrop-blur-[2px]">
+  1371→            <div className="pop-in w-full max-w-md rounded-3xl border-4 border-amber-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+  1372→              <div className="floaty text-6xl" aria-hidden>🚀</div>
+  1373→              <h1 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">Bubble Pop Adventure!</h1>
+  1374→              <p className="mt-2 flex items-center justify-center gap-1.5 text-base font-bold text-gray-500">
+  1375→                <Sparkles size={18} className="text-amber-400" aria-hidden />
+  1376→                Pop the silly monsters with bubbles &amp; stars!
+  1377→                <Sparkles size={18} className="text-amber-400" aria-hidden />
+  1378→              </p>
+  1379→              <div className="mt-4 grid grid-cols-2 gap-2 text-sm font-bold text-gray-600">
+  1380→                <div className="rounded-2xl bg-amber-50 px-2 py-3">
+  1381→                  <span className="text-lg" aria-hidden>⬅️➡️</span>
+  1382→                  <div>move</div>
+  1383→                </div>
+  1384→                <div className="rounded-2xl bg-pink-50 px-2 py-3">
+  1385→                  <span className="text-lg" aria-hidden>🫧</span>
+  1386→                  <div>space = shoot</div>
+  1387→                </div>
+  1388→              </div>
+  1389→              <p className="mt-2 text-xs font-bold text-gray-400">On a tablet? Drag to move, tap to pop!</p>
+  1390→
+  1391→              {/* ── pick your mode! ── */}
+  1392→              <p className="mt-5 text-xs font-extrabold uppercase tracking-widest text-gray-400">Pick your mode</p>
+  1393→              <button
+  1394→                onClick={(e) => {
+  1395→                  e.currentTarget.blur()
+  1396→                  controlsRef.current?.start('kids')
+  1397→                }}
+  1398→                className={`mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95 ${lastMode === 'kids' ? 'ring-4 ring-emerald-200' : ''}`}
+  1399→              >
+  1400→                <span className="text-3xl" aria-hidden>🧒</span>
+  1401→                <span className="flex flex-col items-start leading-tight">
+  1402→                  <span>{MODES.kids.label}</span>
+  1403→                  <span className="text-[11px] font-bold text-white/90">{MODES.kids.blurb}</span>
+  1404→                </span>
+  1405→              </button>
+  1406→              <button
+  1407→                onClick={(e) => {
+  1408→                  e.currentTarget.blur()
+  1409→                  controlsRef.current?.start('adults')
+  1410→                }}
+  1411→                className={`mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95 ${lastMode === 'adults' ? 'ring-4 ring-pink-200' : ''}`}
+  1412→              >
+  1413→                <span className="text-3xl" aria-hidden>🧑‍🚀</span>
+  1414→                <span className="flex flex-col items-start leading-tight">
+  1415→                  <span>{MODES.adults.label}</span>
+  1416→                  <span className="text-[11px] font-bold text-white/90">{MODES.adults.blurb}</span>
+  1417→                </span>
+  1418→              </button>
+  1419→              <p className="mt-3 text-sm font-bold text-gray-400">3 bubbly levels in every mode! 🫧</p>
+  1420→            </div>
+  1421→          </div>
+  1422→        )}
+  1423→
+  1424→        {/* ════════ OVERLAY: LEVEL COMPLETE (reward screen) ════════ */}
+  1425→        {ui === 'levelClear' && (
+  1426→          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 p-4 backdrop-blur-[2px]">
+  1427→            <div className="pop-in w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+  1428→              <PartyPopper size={52} className="mx-auto text-pink-500" aria-hidden />
+  1429→              <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">
+  1430→                {MODES[hud.mode].levels[hud.level].name} Complete!
+  1431→              </h2>
+  1432→              <p className="mt-1 text-base font-bold text-gray-500">
+  1433→                You popped {goal} silly monsters!
+  1434→              </p>
+  1435→              <div className="mt-4 flex items-center justify-center gap-2">
+  1436→                {[0, 1, 2].map((i) => (
+  1437→                  <Star
+  1438→                    key={i}
+  1439→                    size={56}
+  1440→                    aria-hidden
+  1441→                    className={`star-pop ${i < stars ? 'fill-amber-400 text-amber-400 drop-shadow-md' : 'fill-gray-100 text-gray-200'}`}
+  1442→                    style={{ animationDelay: `${i * 0.18}s` }}
+  1443→                  />
+  1444→                ))}
+  1445→              </div>
+  1446→              <p className="mt-3 text-lg font-extrabold text-amber-500">
+  1447→                {stars === 3 ? 'PERFECT! All hearts safe!' : stars === 2 ? 'Amazing flying!' : 'You did it — hooray!'}
+  1448→              </p>
+  1449→              <p className="mt-1 flex items-center justify-center gap-1 text-sm font-bold text-rose-400">
+  1450→                <Heart size={16} className="fill-rose-400 text-rose-400" aria-hidden /> +{MODES[hud.mode].hearts} fresh hearts for the next level!
+  1451→              </p>
+  1452→              <button
+  1453→                onClick={(e) => {
+  1454→                  e.currentTarget.blur()
+  1455→                  controlsRef.current?.next()
+  1456→                }}
+  1457→                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-amber-400 text-2xl font-extrabold text-white shadow-lg shadow-amber-200 transition hover:bg-amber-500 active:scale-95"
+  1458→              >
+  1459→                NEXT LEVEL <ArrowRight size={28} aria-hidden />
+  1460→              </button>
+  1461→            </div>
+  1462→          </div>
+  1463→        )}
+  1464→
+  1465→        {/* ════════ OVERLAY: GREAT TRY (out of hearts — always encouraging!) ════════ */}
+  1466→        {ui === 'over' && (
+  1467→          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 p-4 backdrop-blur-[2px]">
+  1468→            <div className="pop-in w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+  1469→              <div className="text-6xl" aria-hidden>🌈</div>
+  1470→              <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">Great try! Play again?</h2>
+  1471→              <p className="mt-2 text-base font-bold text-gray-500">
+  1472→                The silly monsters say “good game!” 👾
+  1473→              </p>
+  1474→              <p className="mt-3 flex items-center justify-center gap-1.5 text-lg font-extrabold text-amber-500">
+  1475→                <Star size={22} className="fill-amber-400 text-amber-400" aria-hidden /> You collected {hud.score} stars!
+  1476→              </p>
+  1477→              <button
+  1478→                onClick={(e) => {
+  1479→                  e.currentTarget.blur()
+  1480→                  controlsRef.current?.start(hud.mode)
+  1481→                }}
+  1482→                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-2xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95"
+  1483→              >
+  1484→                <RotateCcw size={28} aria-hidden /> PLAY AGAIN
+  1485→              </button>
+  1486→              <button
+  1487→                onClick={(e) => {
+  1488→                  e.currentTarget.blur()
+  1489→                  controlsRef.current?.toMenu()
+  1490→                }}
+  1491→                className="mt-3 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
+  1492→              >
+  1493→                switch mode
+  1494→              </button>
+  1495→            </div>
+  1496→          </div>
+  1497→        )}
+  1498→
+  1499→        {/* ════════ OVERLAY: CHAMPION (all 3 levels finished!) ════════ */}
+  1500→        {ui === 'won' && (
+  1501→          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 p-4 backdrop-blur-[2px]">
+  1502→            <div className="pop-in w-full max-w-md rounded-3xl border-4 border-amber-300 bg-white p-6 text-center shadow-2xl sm:p-8">
+  1503→              <Trophy size={56} className="mx-auto wiggle text-amber-400" aria-hidden />
+  1504→              <h2 className="mt-2 text-3xl font-extrabold text-amber-500 sm:text-4xl">
+  1505→                {hud.mode === 'adults' ? 'GROWN-UP LEGEND!' : 'YOU DID IT!'}
+  1506→              </h2>
+  1507→              <p className="mt-1 text-base font-bold text-gray-500">
+  1508→                {hud.mode === 'adults' ? 'You conquered Grown-Ups Mode — a Bubble Pop Legend! 🏆' : 'You’re an official Bubble Pop Champion! 🏆'}
+  1509→              </p>
+  1510→              <div className="mt-4 flex items-center justify-center gap-2">
+  1511→                {[0, 1, 2].map((i) => (
+  1512→                  <Star key={i} size={52} aria-hidden className="star-pop fill-amber-400 text-amber-400 drop-shadow-md" style={{ animationDelay: `${i * 0.15}s` }} />
+  1513→                ))}
+  1514→              </div>
+  1515→              <p className="mt-4 flex items-center justify-center gap-1.5 text-xl font-extrabold text-pink-500">
+  1516→                <Star size={24} className="fill-amber-400 text-amber-400" aria-hidden /> {hud.score} stars collected!
+  1517→              </p>
+  1518→              <button
+  1519→                onClick={(e) => {
+  1520→                  e.currentTarget.blur()
+  1521→                  controlsRef.current?.start(hud.mode)
+  1522→                }}
+  1523→                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-2xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95"
+  1524→              >
+  1525→                <RotateCcw size={28} aria-hidden /> PLAY AGAIN
+  1526→              </button>
+  1527→              <button
+  1528→                onClick={(e) => {
+  1529→                  e.currentTarget.blur()
+  1530→                  controlsRef.current?.toMenu()
+  1531→                }}
+  1532→                className="mt-3 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
+  1533→              >
+  1534→                switch mode
+  1535→              </button>
+  1536→            </div>
+  1537→          </div>
+  1538→        )}
+  1539→      </div>
+  1540→
+  1541→      {/* ════════ FOOTER (sticks to the bottom, always) ════════ */}
+  1542→      <footer className="mt-auto border-t-2 border-amber-100 bg-amber-50 px-4 py-1.5 text-center text-[11px] font-bold text-amber-700 sm:text-xs">
+  1543→        Made with 💛 for little heroes · Parents: tweak speeds, colors &amp; sounds at the top of the game file
+  1544→      </footer>
+  1545→    </main>
+  1546→  )
+  1547→}
+  1548→

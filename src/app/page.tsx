@@ -9,6 +9,7 @@
       • Silly smiling monsters that drift down from the sky
       • Pop them with bubbles & stars → confetti + sparkles + happy sounds!
       • 5 hearts, 3 easy levels, reward screens, cheerful music, mute button
+      • Big START GAME & QUIT GAME buttons + a cozy pause break (ESC on desktop)
 
    🕹  CONTROLS
       • Keyboard:  ← →  (or A / D) to move  •  SPACE (hold it!) to shoot
@@ -28,8 +29,11 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
+  Check,
+  DoorOpen,
   Heart,
   PartyPopper,
+  Play,
   RotateCcw,
   Sparkles,
   Star,
@@ -145,7 +149,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
 
 /* ───────────────────────────── game types ───────────────────────────── */
-type UIState = 'menu' | 'playing' | 'levelClear' | 'over' | 'won'
+type UIState = 'menu' | 'playing' | 'paused' | 'levelClear' | 'over' | 'won' | 'bye'
 
 interface Monster {
   x: number
@@ -894,7 +898,16 @@ export default function Home() {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const gRef = useRef<GameData | null>(null)
   const audioRef = useRef<GameAudio | null>(null)
-  const controlsRef = useRef<{ start: (mode: Mode) => void; next: () => void; toggleMute: () => void; toMenu: () => void } | null>(null)
+  const controlsRef = useRef<{
+    start: (mode: Mode) => void
+    selectMode: (mode: Mode) => void
+    next: () => void
+    toggleMute: () => void
+    toMenu: () => void
+    pause: () => void
+    resume: () => void
+    bye: () => void
+  } | null>(null)
 
   // React state = only the pretty HUD & overlay screens (the game itself
   // runs at 60fps inside refs so React never slows it down)
@@ -913,14 +926,14 @@ export default function Home() {
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
   const [hurtKey, setHurtKey] = useState(0) // changing this re-plays the heart-shake
-  const [lastMode, setLastMode] = useState<Mode | null>(null) // ring the mode you played last time
+  const [selectedMode, setSelectedMode] = useState<Mode>('kids') // mode highlighted on the menu
 
-  // remember which mode was played last visit (purely cosmetic highlight)
+  // if you played before, gently pre-pick the mode you chose last time
   useEffect(() => {
     const id = setTimeout(() => {
       try {
         const saved = localStorage.getItem('bubblePopMode')
-        if (saved === 'kids' || saved === 'adults') setLastMode(saved)
+        if (saved === 'kids' || saved === 'adults') setSelectedMode(saved)
       } catch {
         /* private browsing — no problem */
       }
@@ -1029,6 +1042,38 @@ export default function Home() {
       audio.stopMusic()
       setUi('menu')
       syncHud()
+    }
+
+    /* menu: tap a mode card — nothing starts yet (the big START button does) */
+    const selectMode = (m: Mode) => {
+      audio.init()
+      audio.click()
+      setSelectedMode(m)
+    }
+
+    /* ⏸ take a break — freezes monsters, bubbles & music until you're ready */
+    const pause = () => {
+      if (g.state !== 'playing') return
+      audio.click()
+      g.state = 'paused'
+      audio.stopMusic()
+      setUi('paused')
+    }
+
+    /* ▶ back to the fun — unfreezes everything */
+    const resume = () => {
+      if (g.state !== 'paused') return
+      audio.click()
+      g.state = 'playing'
+      audio.startMusic(MODES[g.mode].fastMusic)
+      setUi('playing')
+    }
+
+    /* 👋 quit from the menu → a friendly goodbye screen */
+    const bye = () => {
+      audio.click()
+      g.state = 'bye'
+      setUi('bye')
     }
 
     /* level finished! pop the leftovers into confetti and show the reward */
@@ -1187,6 +1232,10 @@ export default function Home() {
         keys.shoot = true
         audio.init()
       }
+      if (e.key === 'Escape') {
+        if (g.state === 'playing') pause() // esc = take a little break
+        else if (g.state === 'paused') resume() // esc again = back to the fun!
+      }
     }
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false
@@ -1248,7 +1297,7 @@ export default function Home() {
       setMuted(audio.muted)
       audio.click()
     }
-    controlsRef.current = { start, next, toggleMute, toMenu }
+    controlsRef.current = { start, selectMode, next, toggleMute, toMenu, pause, resume, bye }
 
     /* ── go! ── */
     let raf = 0
@@ -1358,17 +1407,31 @@ export default function Home() {
           >
             {muted ? <VolumeX size={24} className="text-gray-500" /> : <Volume2 size={24} className="text-emerald-600" />}
           </button>
+          {/* quit button — only while playing (pauses the game & asks "sure?") */}
+          {ui === 'playing' && (
+            <button
+              onClick={(e) => {
+                e.currentTarget.blur()
+                controlsRef.current?.pause()
+              }}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-md transition active:scale-90"
+              aria-label="Quit the game"
+              title="Quit game"
+            >
+              <DoorOpen size={24} className="text-rose-500" aria-hidden />
+            </button>
+          )}
         </div>
 
         {/* tiny desktop hint */}
         <div className="pointer-events-none absolute bottom-2 left-3 z-10 hidden text-xs font-bold text-slate-600/70 sm:block">
-          ← → move · space = pop!
+          ← → move · space = pop! · esc = break
         </div>
 
         {/* ════════ OVERLAY: START MENU ════════ */}
         {ui === 'menu' && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 p-4 backdrop-blur-[2px]">
-            <div className="pop-in w-full max-w-md rounded-3xl border-4 border-amber-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
+            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-amber-200 bg-white p-6 text-center shadow-2xl sm:p-8">
               <div className="floaty text-6xl" aria-hidden>🚀</div>
               <h1 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">Bubble Pop Adventure!</h1>
               <p className="mt-2 flex items-center justify-center gap-1.5 text-base font-bold text-gray-500">
@@ -1388,43 +1451,77 @@ export default function Home() {
               </div>
               <p className="mt-2 text-xs font-bold text-gray-400">On a tablet? Drag to move, tap to pop!</p>
 
-              {/* ── pick your mode! ── */}
-              <p className="mt-5 text-xs font-extrabold uppercase tracking-widest text-gray-400">Pick your mode</p>
+              {/* ── step 1 · pick your mode (tap a card, then press START!) ── */}
+              <p className="mt-5 text-xs font-extrabold uppercase tracking-widest text-gray-400">1 · Pick your mode</p>
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.start('kids')
+                  controlsRef.current?.selectMode('kids')
                 }}
-                className={`mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95 ${lastMode === 'kids' ? 'ring-4 ring-emerald-200' : ''}`}
+                aria-pressed={selectedMode === 'kids'}
+                className={`relative mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95 ${selectedMode === 'kids' ? 'ring-4 ring-emerald-300 ring-offset-2' : 'opacity-85'}`}
               >
                 <span className="text-3xl" aria-hidden>🧒</span>
                 <span className="flex flex-col items-start leading-tight">
                   <span>{MODES.kids.label}</span>
                   <span className="text-[11px] font-bold text-white/90">{MODES.kids.blurb}</span>
                 </span>
+                {selectedMode === 'kids' && (
+                  <span className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-emerald-300 bg-white text-emerald-500 shadow" aria-hidden>
+                    <Check size={16} strokeWidth={3.5} />
+                  </span>
+                )}
               </button>
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
-                  controlsRef.current?.start('adults')
+                  controlsRef.current?.selectMode('adults')
                 }}
-                className={`mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95 ${lastMode === 'adults' ? 'ring-4 ring-pink-200' : ''}`}
+                aria-pressed={selectedMode === 'adults'}
+                className={`relative mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95 ${selectedMode === 'adults' ? 'ring-4 ring-pink-300 ring-offset-2' : 'opacity-85'}`}
               >
                 <span className="text-3xl" aria-hidden>🧑‍🚀</span>
                 <span className="flex flex-col items-start leading-tight">
                   <span>{MODES.adults.label}</span>
                   <span className="text-[11px] font-bold text-white/90">{MODES.adults.blurb}</span>
                 </span>
+                {selectedMode === 'adults' && (
+                  <span className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-pink-300 bg-white text-pink-500 shadow" aria-hidden>
+                    <Check size={16} strokeWidth={3.5} />
+                  </span>
+                )}
               </button>
-              <p className="mt-3 text-sm font-bold text-gray-400">3 bubbly levels in every mode! 🫧</p>
+
+              {/* ── step 2 · start the adventure! ── */}
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.start(selectedMode)
+                }}
+                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-amber-400 text-2xl font-extrabold text-white shadow-lg shadow-amber-200 transition hover:bg-amber-500 active:scale-95"
+              >
+                <Play size={30} aria-hidden /> START GAME
+              </button>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.bye()
+                }}
+                className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-amber-200 bg-white text-base font-extrabold text-gray-400 shadow-sm transition hover:bg-amber-50 hover:text-rose-400 active:scale-95"
+              >
+                <DoorOpen size={20} aria-hidden /> QUIT GAME
+              </button>
+              <p className="mt-3 text-sm font-bold text-gray-400">
+                {selectedMode === 'kids' ? MODES.kids.label : MODES.adults.label} · 3 bubbly levels! 🫧
+              </p>
             </div>
           </div>
         )}
 
         {/* ════════ OVERLAY: LEVEL COMPLETE (reward screen) ════════ */}
         {ui === 'levelClear' && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 p-4 backdrop-blur-[2px]">
-            <div className="pop-in w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
+            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
               <PartyPopper size={52} className="mx-auto text-pink-500" aria-hidden />
               <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">
                 {MODES[hud.mode].levels[hud.level].name} Complete!
@@ -1464,8 +1561,8 @@ export default function Home() {
 
         {/* ════════ OVERLAY: GREAT TRY (out of hearts — always encouraging!) ════════ */}
         {ui === 'over' && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 p-4 backdrop-blur-[2px]">
-            <div className="pop-in w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
+            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
               <div className="text-6xl" aria-hidden>🌈</div>
               <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">Great try! Play again?</h2>
               <p className="mt-2 text-base font-bold text-gray-500">
@@ -1490,7 +1587,7 @@ export default function Home() {
                 }}
                 className="mt-3 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
               >
-                switch mode
+                back to menu
               </button>
             </div>
           </div>
@@ -1498,8 +1595,8 @@ export default function Home() {
 
         {/* ════════ OVERLAY: CHAMPION (all 3 levels finished!) ════════ */}
         {ui === 'won' && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/55 p-4 backdrop-blur-[2px]">
-            <div className="pop-in w-full max-w-md rounded-3xl border-4 border-amber-300 bg-white p-6 text-center shadow-2xl sm:p-8">
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
+            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-amber-300 bg-white p-6 text-center shadow-2xl sm:p-8">
               <Trophy size={56} className="mx-auto wiggle text-amber-400" aria-hidden />
               <h2 className="mt-2 text-3xl font-extrabold text-amber-500 sm:text-4xl">
                 {hud.mode === 'adults' ? 'GROWN-UP LEGEND!' : 'YOU DID IT!'}
@@ -1531,8 +1628,61 @@ export default function Home() {
                 }}
                 className="mt-3 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
               >
-                switch mode
+                back to menu
               </button>
+            </div>
+          </div>
+        )}
+        {/* ════════ OVERLAY: PAUSED — quit check before leaving ════════ */}
+        {ui === 'paused' && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
+            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-emerald-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+              <div className="floaty text-6xl" aria-hidden>☕</div>
+              <h2 className="mt-2 text-3xl font-extrabold text-emerald-600 sm:text-4xl">Taking a break?</h2>
+              <p className="mt-2 text-base font-bold text-gray-500">
+                The silly monsters are waiting patiently… 👾
+              </p>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.resume()
+                }}
+                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-2xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95"
+              >
+                <Play size={30} aria-hidden /> KEEP PLAYING
+              </button>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.toMenu()
+                }}
+                className="mt-2 flex h-14 w-full items-center justify-center gap-2 rounded-full border-2 border-rose-200 bg-white text-lg font-extrabold text-rose-400 shadow-sm transition hover:bg-rose-50 active:scale-95"
+              >
+                <DoorOpen size={22} aria-hidden /> QUIT GAME
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ════════ OVERLAY: GOODBYE 👋 (after quitting from the menu) ════════ */}
+        {ui === 'bye' && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
+            <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-amber-200 bg-white p-6 text-center shadow-2xl sm:p-8">
+              <div className="floaty text-6xl" aria-hidden>👋</div>
+              <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">Thanks for playing!</h2>
+              <p className="mt-2 text-base font-bold text-gray-500">
+                The silly monsters will miss you! 👾
+              </p>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.toMenu()
+                }}
+                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-400 text-2xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-500 active:scale-95"
+              >
+                <Play size={30} aria-hidden /> COME BACK &amp; PLAY
+              </button>
+              <p className="mt-3 text-xs font-bold text-gray-400">You can close this tab now — or stay and pop a few more! 💛</p>
             </div>
           </div>
         )}
