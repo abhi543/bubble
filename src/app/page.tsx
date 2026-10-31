@@ -482,6 +482,11 @@ function freshGame(): GameData {
   } catch {
     /* private browsing — no problem */
   }
+  const save = loadLocalSave()
+  const initialMode = save.mode || 'kids'
+  const savedLevel = initialMode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
+  const savedScore = save.totalStars || 0
+
   return {
     state: 'menu',
     w: 800,
@@ -501,9 +506,9 @@ function freshGame(): GameData {
       s: rand(0.7, 1.3),
       v: rand(8, 20), // cloud drift speed
     })),
-    level: 0,
+    level: clamp(savedLevel, 0, 119),
     popped: 0,
-    score: 0,
+    score: savedScore,
     hearts: MODES.kids.hearts,
     spawnT: 0.8,
     bossSpawned: false,
@@ -2258,6 +2263,11 @@ export default function Home() {
       g.mode = m
       try {
         localStorage.setItem('bubblePopMode', m) // remember it for next visit
+        const save = loadLocalSave()
+        save.mode = m
+        const resumeL = m === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
+        g.level = clamp(resumeL, 0, 119)
+        saveLocalProgress(save)
       } catch {
         /* private browsing — no problem */
       }
@@ -2285,12 +2295,14 @@ export default function Home() {
       }
     }
 
-    /* LET'S GO! → level 1 with your pal */
+    /* LET'S GO! → Resume at your highest unlocked level with your pal! */
     const startGame = () => {
       audio.init()
       audio.click()
-      g.level = 0
-      g.score = 0
+      const save = loadLocalSave()
+      const resumeLevel = g.mode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
+      g.level = clamp(resumeLevel, 0, 119)
+      g.score = save.totalStars || 0
       g.hearts = MODES[g.mode].hearts
       g.seen = {} // every new playthrough re-introduces the friends 👋
       g.seenPower = {} // ...and the power-up how-to pop-ups too! 🎁
@@ -3415,7 +3427,13 @@ export default function Home() {
           <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
             <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-amber-200 bg-white p-5 text-center shadow-2xl sm:p-6">
               <h2 className="text-2xl font-extrabold text-pink-500 sm:text-3xl">Pick your pal! 🎉</h2>
-              <p className="mt-1 text-sm font-bold text-gray-500">Tap a friend, then press LET&rsquo;S GO!</p>
+              <p className="mt-1 text-sm font-bold text-gray-500">
+                Level {hud.level + 1} of 120 · ⭐ {hud.score} stars collected!
+              </p>
+              <div className="mx-auto mt-2 flex items-center justify-center gap-1.5 rounded-full bg-amber-100/80 px-3 py-1 text-xs font-extrabold text-amber-800">
+                <span>Passcode:</span>
+                <span className="font-mono tracking-wider">{loadLocalSave().profile.recoveryCode}</span>
+              </div>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 {CHARACTER_LIST.map((id) => {
                   const c = CHARACTERS[id]
