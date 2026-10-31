@@ -140,6 +140,385 @@ const MODES: Record<Mode, ModeConfig> = {
   },
 }
 
+/* ───────────────────────────────────────────────────────────────────────
+   SETUP 2¾ · ENEMY FRIENDS 👾 — every silly pal you can pop, in ONE place!
+   ───────────────────────────────────────────────────────────────────────
+   HOW TO ADD YOUR OWN NEW ENEMY (grown-ups & kids together!):
+     1. Add a block below — give it a fun name, a bright color & numbers.
+     2. Pick a movement:  'straight' (floats down)  · 'zigzag' (wiggles)
+        'bounce' (wall-to-wall)        · 'spin'   (twirls around)
+        'drift'  (crosses the sky)     · 'fade'   (blinks in & out)
+     3. Add a drawing for it in drawEnemy() below — search "DRAW THE ENEMIES".
+     That's it! It will join the party all by itself once "fromLevel" is reached.
+   ─────────────────────────────────────────────────────────────────────── */
+const ENEMIES: Record<EnemyType, EnemyConfig> = ALL_ENEMIES
+const BOSSES: BossConfig[] = ALL_BOSSES
+
+const levelsOf = (m: Mode): LevelConfig[] => MODES[m].levels
+const FONT = '"Comic Sans MS", "Chalkboard SE", "Comic Neue", system-ui, sans-serif'
+
+/* ───────────────────────────────────────────────────────────────────────
+   SETUP 2½ · CHARACTERS 🚀🐬🐰🤖 — the four pals you can play as!
+   Change a friend's colors, name, or bubble right here:
+     body/trim/belly = the main paint colors (hex like '#ff8a5c')
+     bubble          = the special bubble they shoot:
+                       'star' | 'water' | 'heart' | 'rainbow'
+     bobAmp          = how much they bob up & down while hovering (pixels)
+     bobSpeed        = how fast they bob (bigger = bouncier!)
+   The faces (smile / surprised / cheer) are drawn in drawCharacter() below.
+   ─────────────────────────────────────────────────────────────────────── */
+type CharacterId = 'rocky' | 'dolly' | 'bunny' | 'zippy'
+type FaceExpr = 'smile' | 'surprised' | 'cheer'
+
+interface CharacterConfig {
+  name: string // shown on the selection card
+  emoji: string // little helper for text lines
+  tagline: string // what they shoot, in kid words
+  body: string // main color
+  trim: string // outline / details color
+  belly: string // tummy / lighter patch color
+  bubble: Shot['kind'] // their signature bubble
+  bobAmp: number // hover bounce height (pixels)
+  bobSpeed: number // hover bounce speed
+}
+
+const CHARACTERS: Record<CharacterId, CharacterConfig> = {
+  rocky: {
+    name: 'Rocky the Rocket',
+    emoji: '🚀',
+    tagline: 'shoots star bubbles',
+    body: '#ff8a5c',
+    trim: '#e26a3d',
+    belly: '#ffd9c4',
+    bubble: 'star',
+    bobAmp: 4,
+    bobSpeed: 2.2,
+  },
+  dolly: {
+    name: 'Dolly the Dolphin',
+    emoji: '🐬',
+    tagline: 'shoots water bubbles',
+    body: '#59c6ee',
+    trim: '#2f9ec7',
+    belly: '#cdefff',
+    bubble: 'water',
+    bobAmp: 6,
+    bobSpeed: 1.7,
+  },
+  bunny: {
+    name: 'Bunny Bubbles',
+    emoji: '🐰',
+    tagline: 'shoots heart bubbles',
+    body: '#ffb3d4',
+    trim: '#f278ab',
+    belly: '#ffe1ee',
+    bubble: 'heart',
+    bobAmp: 8,
+    bobSpeed: 3.1,
+  },
+  zippy: {
+    name: 'Zippy the Robot',
+    emoji: '🤖',
+    tagline: 'shoots rainbow bubbles',
+    body: '#ffd93d',
+    trim: '#e8a800',
+    belly: '#fff3bf',
+    bubble: 'rainbow',
+    bobAmp: 3,
+    bobSpeed: 2.8,
+  },
+}
+
+const CHARACTER_LIST: CharacterId[] = ['rocky', 'dolly', 'bunny', 'zippy']
+
+/* ───────────────────────────────────────────────────────────────────────────
+   SETUP 2⅚ · POWER-UPS 🎁 — happy gifts that float down from the sky!
+   ───────────────────────────────────────────────────────────────────────────
+   HOW THEY WORK: every little while a gift bubble drifts down from the top.
+   Touch it with your pal — or pop it with a bubble — to collect it. Missed
+   gifts gently fade away at the bottom; they can NEVER hurt you.
+
+   HOW TO ADD YOUR OWN NEW POWER-UP (grown-ups & kids together!):
+     1. Add a block below — name, emoji, color & numbers.
+     2. duration > 0 → it becomes a TIMED power with a countdown ring near
+        the hearts (only ONE timed power can be on at a time).
+     3. duration = 0 → it works instantly (like the Heart Refill).
+     4. Add what it DOES inside collectPowerUp() — search "POWER-UP plumbing".
+   ─────────────────────────────────────────────────────────────────────────── */
+type PowerUpType = 'rainbow' | 'shield' | 'slow' | 'heart' | 'magnet' | 'giant'
+
+interface PowerUpConfig {
+  name: string // shown in the "you got a gift!" pop-up
+  emoji: string // the friendly symbol inside the bubble
+  tip: string // one friendly line: what it does
+  duration: number // seconds it lasts (0 = works instantly!)
+  weight: number // how often it drops (bigger = more common)
+  color: string // its glow color
+}
+
+const POWERUPS: Record<PowerUpType, PowerUpConfig> = {
+  rainbow: {
+    name: 'Rainbow Bubbles',
+    emoji: '🌈',
+    tip: 'Shoot lots at once!',
+    duration: 8, // 8 seconds of triple-bubble fans
+    weight: 2,
+    color: '#b18aff',
+  },
+  shield: {
+    name: 'Bubble Shield',
+    emoji: '🫧',
+    tip: 'Blocks one boop — pop!',
+    duration: 0, // stays until it saves you once, then pops away
+    weight: 2,
+    color: '#4fc3f7', // a shiny blue bubble!
+  },
+  slow: {
+    name: 'Slow Motion',
+    emoji: '🐌',
+    tip: 'Everyone floats in slow-mo!',
+    duration: 6, // 6 dreamy seconds at half speed
+    weight: 1.5,
+    color: '#c9a6ff',
+  },
+  heart: {
+    name: 'Heart Refill',
+    emoji: '💗',
+    tip: 'Get a heart back!',
+    duration: 0, // works instantly (up to the maximum!)
+    weight: 1, // drops extra often when hearts are low!
+    color: '#ff8fb1',
+  },
+  magnet: {
+    name: 'Star Magnet',
+    emoji: '⭐',
+    tip: 'Gifts & stars fly to you!',
+    duration: 8, // 8 seconds of magical pulling
+    weight: 1.5,
+    color: '#ffd93d',
+  },
+  giant: {
+    name: 'Giant Pop',
+    emoji: '💥',
+    tip: 'Pops EVERYONE at once!',
+    duration: 0, // one super-sized bubble, right away!
+    weight: 1,
+    color: '#7fd8be',
+  },
+}
+
+/* power-up tuning knobs (all in one cozy place!) */
+const PU = {
+  every: [15, 25] as [number, number], // seconds between gifts (levels 2 & 3)
+  everyLevel1: [10, 16] as [number, number], // level 1 gets gifts MORE often
+  fallSpeed: 55, // how fast gifts float down (pixels per second)
+  starChance: 0.12, // chance a popped friend leaves a bonus star ⭐
+  starValue: 2, // bonus stars collected per star
+  bossDamage: 3, // Giant Pop takes this many star-points off a boss
+}
+
+/* Testing cheat: add "?turbo" to the URL and monsters appear crazy fast
+   and each level only needs 2 pops (handy for grown-ups checking rewards).
+   It is detected inside the game (client-side only) to keep SSR happy. */
+
+const PLAYER = {
+  speed: 340, // how fast the rocket slides left/right (pixels per second)
+  shotSpeed: 460, // how fast bubbles fly upward
+}
+
+/* ───────────────────────────── tiny helpers ─────────────────────────── */
+const rand = (a: number, b: number) => a + Math.random() * (b - a)
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
+
+/* ───────────────────────────── game types ───────────────────────────── */
+type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'playing' | 'levelClear' | 'over' | 'won' | 'bye'
+
+interface Monster {
+  x: number
+  y: number
+  baseX: number
+  r: number
+  color: string
+  type: EnemyType // which silly friend this is
+  move: MoveKind // how it travels down the sky
+  boss: number // -1 = regular friend · otherwise its index in BOSSES
+  hp: number // bubbles still needed to pop it
+  maxHp: number
+  wob: number // wobble timer (side-to-side wiggle)
+  wobSpeed: number
+  drift: number
+  speedMul: number // each friend is a tiny bit faster/slower than its pals
+  blink: number // counts down to the next cute blink
+  vx: number // side speed for 'bounce' & 'drift' movers
+  alpha: number // ghosty visibility (1 = fully visible)
+  hitFlash: number // >0 = just got booped (squishy reaction!)
+  spin: number // 'spinny' rotation angle
+  settled: boolean // boss: has it reached its comfy hover spot yet?
+  targetY: number // boss: the height it hovers at
+}
+
+interface Shot {
+  x: number
+  y: number
+  vy: number
+  vx?: number // side speed (rainbow fans fly at a slight angle!)
+  r: number
+  kind: 'star' | 'water' | 'heart' | 'rainbow' // each pal shoots their own!
+  wob: number
+  giant?: boolean // 💥 the one & only GIANT POP bubble!
+}
+
+interface Particle {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  life: number
+  maxLife: number
+  color: string
+  size: number
+  rot: number
+  vr: number
+  kind: 'confetti' | 'sparkle' | 'ring' | 'text'
+  text?: string
+}
+
+interface Cloud {
+  x: number
+  y: number
+  s: number
+  v: number
+}
+
+/* 🎁 a gift power-up floating down from the top of the sky */
+interface PowerUpDrop {
+  x: number
+  baseX: number // the middle it sways around
+  y: number
+  vy: number // float-down speed
+  r: number // bubble size
+  type: PowerUpType // which gift it is
+  phase: number // sway wiggle offset
+  alpha: number // fades out gently at the bottom
+}
+
+/* ⭐ a tiny bonus star that tumbles out of a popped friend */
+interface StarDrop {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  rot: number
+  vr: number
+  alpha: number
+}
+
+/* the ONE timed power-up that is running right now */
+interface ActivePower {
+  type: PowerUpType
+  t: number // seconds left
+  max: number // seconds it started with
+  startedAt: number // g.time when picked (restarts the HUD ring)
+}
+
+/* one friendly "Meet a new friend!" pop-up */
+interface IntroInfo {
+  name: string
+  emoji: string
+  hint: string
+  boss?: boolean
+  power?: boolean // a "you got a POWER-UP!" pop-up instead
+}
+
+interface GameData {
+  state: UIState
+  w: number
+  h: number
+  turbo: boolean // "?turbo" testing mode
+  time: number // total seconds elapsed (for animations)
+  character: CharacterId // the pal you picked on the selection screen
+  player: {
+    x: number
+    tilt: number
+    cool: number
+    surprised: number // >0 = "uh-oh!" face after losing a heart
+    cheer: number // >0 = hip-hip-hooray face when a level is done
+    blink: number // counts down to the next cute blink
+  }
+  targetX: number | null // finger/mouse position while dragging
+  dragging: boolean
+  monsters: Monster[]
+  shots: Shot[]
+  parts: Particle[]
+  clouds: Cloud[]
+  mode: Mode // 'kids' = gentle · 'adults' = tricky
+  level: number // index into the level list of the current mode
+  popped: number // monsters popped this level
+  score: number // total stars collected (across all levels)
+  hearts: number
+  spawnT: number // countdown until the next monster appears
+  bossSpawned: boolean // has this level's big boss arrived yet?
+  seen: Partial<Record<EnemyType, boolean>> // for "Meet a new friend!" pop-ups
+  introQueue: IntroInfo[] // friendly pop-ups waiting their turn
+  introBusy: boolean // is a pop-up on screen right now?
+  powerups: PowerUpDrop[] // gift bubbles floating down 🎁
+  starDrops: StarDrop[] // little bonus stars tumbling from popped friends ⭐
+  active: ActivePower | null // the one timed power-up running right now
+  shield: boolean // Bubble Shield ready? (blocks one hit 🫧)
+  puSpawnT: number // countdown until the next power-up gift appears
+  seenPower: Partial<Record<PowerUpType, boolean>> // first-time gift pop-ups
+  et: number // "enemy time" — crawls at half speed during Slow Motion 🐌
+}
+
+function freshGame(): GameData {
+  // greet you with the pal you played last time (if we can remember them)
+  let savedPal: CharacterId = 'rocky'
+  try {
+    const s = typeof window !== 'undefined' ? localStorage.getItem('bubblePopCharacter') : null
+    if (s === 'rocky' || s === 'dolly' || s === 'bunny' || s === 'zippy') savedPal = s
+  } catch {
+    /* private browsing — no problem */
+  }
+  return {
+    state: 'menu',
+    w: 800,
+    h: 600,
+    turbo: typeof window !== 'undefined' && window.location.search.includes('turbo'),
+    character: savedPal,
+    time: 0,
+    player: { x: 400, tilt: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
+    targetX: null,
+    dragging: false,
+    monsters: [],
+    shots: [],
+    parts: [],
+    clouds: Array.from({ length: 4 }, (_, i) => ({
+      x: rand(0, 900),
+      y: 40 + i * 55 + rand(0, 30),
+      s: rand(0.7, 1.3),
+      v: rand(8, 20), // cloud drift speed
+    })),
+    level: 0,
+    popped: 0,
+    score: 0,
+    hearts: MODES.kids.hearts,
+    spawnT: 0.8,
+    bossSpawned: false,
+    seen: {},
+    introQueue: [],
+    introBusy: false,
+    powerups: [],
+    starDrops: [],
+    active: null,
+    shield: false,
+    puSpawnT: 7,
+    seenPower: {},
+    et: 0,
+  }
+}
+
 /* Effective goal for the current level (turbo mode shrinks it for testing) */
 const goalOf = (g: GameData) => (g.turbo ? 2 : levelsOf(g.mode)[g.level].goal)
 
@@ -553,20 +932,20 @@ function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
   const { w, h } = g
   const world = getWorldForLevel(g.level)
 
-  // dynamic world sky gradient
+  // sky gradient (reactive to current world)
   const grad = ctx.createLinearGradient(0, 0, 0, h)
   grad.addColorStop(0, world.skyTop)
   grad.addColorStop(1, world.skyBottom)
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, w, h)
 
-  // ☀️ smiling sun / cosmic star with slowly spinning rays
+  // ☀️ smiling sun with slowly spinning rays
   const sx = w - 90
   const sy = 92
   ctx.save()
   ctx.translate(sx, sy)
   ctx.rotate(g.time * 0.15)
-  ctx.fillStyle = world.id >= 10 ? 'rgba(255,255,255,0.45)' : 'rgba(255,217,61,0.55)'
+  ctx.fillStyle = 'rgba(255,217,61,0.55)'
   for (let i = 0; i < 8; i++) {
     ctx.rotate(Math.PI / 4)
     ctx.beginPath()
@@ -577,7 +956,7 @@ function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
     ctx.fill()
   }
   ctx.restore()
-  ctx.fillStyle = world.accent
+  ctx.fillStyle = COLORS.sun
   circle(ctx, sx, sy, 34)
   ctx.fillStyle = COLORS.face
   circle(ctx, sx - 11, sy - 5, 3)
@@ -592,16 +971,12 @@ function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
   // ☁️ drifting clouds
   for (const c of g.clouds) drawCloud(ctx, c.x, c.y, c.s)
 
-  // dynamic world rolling hills / horizons
+  // rolling hills / dynamic horizon
   ctx.fillStyle = world.hillDark
   ctx.beginPath()
   ctx.ellipse(w * 0.22, h + 60, w * 0.55, 130, 0, 0, Math.PI * 2)
   ctx.fill()
   ctx.fillStyle = world.hillLight
-  ctx.beginPath()
-  ctx.ellipse(w * 0.82, h + 70, w * 0.55, 120, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.fillStyle = COLORS.hillLight
   ctx.beginPath()
   ctx.ellipse(w * 0.82, h + 70, w * 0.55, 120, 0, 0, Math.PI * 2)
   ctx.fill()
@@ -1035,7 +1410,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
       break
     }
     case 'puffer': {
-      /* 🐡 PRICKLY PUFFER - swells up with round spines when close to player */
+      /* 🐡 PRICKLY PUFFER — swells up with round spines when close to player */
       const distToPlayer = Math.abs(g.player.x - m.x)
       const swell = clamp(1 + (1 - Math.min(1, distToPlayer / 200)) * 0.35, 1, 1.4)
       ctx.save()
@@ -1057,7 +1432,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
       break
     }
     case 'gummy': {
-      /* 🍯 GUMMY GLIDER - sweet dripping honey jelly with wings */
+      /* 🍯 GUMMY GLIDER — sweet dripping honey jelly with wings */
       ctx.beginPath()
       ctx.ellipse(0, 0, r, r * 0.85, 0, 0, Math.PI * 2)
       ctx.fillStyle = m.color
@@ -1065,14 +1440,13 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
       ctx.strokeStyle = outline
       ctx.lineWidth = 3
       ctx.stroke()
-      // honey shine
       ctx.fillStyle = 'rgba(255,255,255,0.4)'
       circle(ctx, -r * 0.3, -r * 0.3, r * 0.2)
       palFace(ctx, r * 0.8, 'smile', blinking)
       break
     }
     case 'dragonfly': {
-      /* 🛸 DARTING DRAGONFLY - cute flutter wings with hover goggles */
+      /* 🛸 DARTING DRAGONFLY — cute flutter wings with hover goggles */
       for (const side of [-1, 1]) {
         ctx.save()
         ctx.translate(side * r * 0.6, -r * 0.3)
@@ -1094,7 +1468,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
       break
     }
     case 'armadillo': {
-      /* 🛡️ ARMORED ARMADILLO - crystal carapace protects top, soft smile below */
+      /* 🛡️ ARMORED ARMADILLO — crystal carapace protects top, soft smile below */
       ctx.beginPath()
       ctx.arc(0, 0, r, Math.PI, 0)
       ctx.fillStyle = '#495057'
@@ -1102,7 +1476,6 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
       ctx.strokeStyle = outline
       ctx.lineWidth = 3.5
       ctx.stroke()
-      // ventral tummy
       ctx.beginPath()
       ctx.arc(0, 0, r, 0, Math.PI)
       ctx.fillStyle = m.color
@@ -1114,7 +1487,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
       break
     }
     case 'mitosis': {
-      /* 🦠 MITOSIS MITE - twin bubbly nuclei wiggling inside */
+      /* 🦠 MITOSIS MITE — twin bubbly nuclei wiggling inside */
       ctx.beginPath()
       ctx.arc(0, 0, r, 0, Math.PI * 2)
       ctx.fillStyle = m.color
@@ -1128,7 +1501,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
       break
     }
     case 'cosmo': {
-      /* 🌌 CHRONO COSMO - swirling deep galaxy sphere with planetary ring */
+      /* 🌌 CHRONO COSMO — swirling deep galaxy sphere with planetary ring */
       ctx.save()
       ctx.rotate(time * 0.8)
       ctx.beginPath()
@@ -1255,9 +1628,8 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.fillStyle = '#ff8fb1' // a tiny pink jewel
     circle(ctx, 0, -r * 1.08 + r * 0.24, r * 0.07)
     palFace(ctx, r * 0.6, expr, blinking, 0, r * 0.05)
-  }
   } else if (b.key === 'barnaby') {
-    /* 🐚 BARNABY BARNACLE - pearlescent spiral seashell */
+    /* 🐚 BARNABY BARNACLE — pearlescent spiral seashell */
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
     ctx.fillStyle = m.color
@@ -1265,7 +1637,6 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.strokeStyle = outline
     ctx.lineWidth = 4
     ctx.stroke()
-    // spiral whorl
     ctx.beginPath()
     ctx.arc(0, 0, r * 0.5, 0, Math.PI * 1.5)
     ctx.strokeStyle = 'rgba(255,255,255,0.7)'
@@ -1273,7 +1644,7 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.stroke()
     palFace(ctx, r * 0.65, expr, blinking)
   } else if (b.key === 'owl') {
-    /* 🦉 FROSTY SNOW-OWL - round owl face with knitted scarf */
+    /* 🦉 FROSTY SNOW-OWL — round owl face with knitted scarf */
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
     ctx.fillStyle = m.color
@@ -1281,12 +1652,11 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.strokeStyle = outline
     ctx.lineWidth = 4
     ctx.stroke()
-    // feather ear tufts
     circle(ctx, -r * 0.6, -r * 0.7, r * 0.25)
     circle(ctx, r * 0.6, -r * 0.7, r * 0.25)
     palFace(ctx, r * 0.65, expr, blinking)
   } else if (b.key === 'luna') {
-    /* 🌟 LUNA STAR-WEAVER - crescent moon sprite with golden halo */
+    /* 🌟 LUNA STAR-WEAVER — crescent moon sprite with golden halo */
     starPath(ctx, 0, 0, r * 1.4, r * 0.75, 8, time)
     ctx.fillStyle = 'rgba(254, 228, 64, 0.45)'
     ctx.fill()
@@ -1299,7 +1669,7 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.stroke()
     palFace(ctx, r * 0.65, expr, blinking)
   } else if (b.key === 'seals') {
-    /* 🦭 PIP & POP CIRCUS SEALS - performing circus barrel seal */
+    /* 🦭 PIP & POP CIRCUS SEALS — performing circus barrel seal */
     ctx.beginPath()
     ctx.ellipse(0, 0, r * 1.1, r * 0.9, 0, 0, Math.PI * 2)
     ctx.fillStyle = m.color
@@ -1307,10 +1677,10 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.strokeStyle = outline
     ctx.lineWidth = 4
     ctx.stroke()
-    circle(ctx, 0, -r * 1.1, r * 0.3) // balancing ball!
+    circle(ctx, 0, -r * 1.1, r * 0.3)
     palFace(ctx, r * 0.65, expr, blinking)
   } else if (b.key === 'octo') {
-    /* 🐙 OCTO-CLAUS SQUID - big smiling octopus with waving tentacles */
+    /* 🐙 OCTO-CLAUS SQUID — big smiling octopus with waving tentacles */
     ctx.beginPath()
     ctx.arc(0, -r * 0.1, r * 0.9, 0, Math.PI * 2)
     ctx.fillStyle = m.color
@@ -1324,7 +1694,7 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     }
     palFace(ctx, r * 0.65, expr, blinking, 0, -r * 0.1)
   } else if (b.key === 'bonbon') {
-    /* 🍬 BARON VON BONBON - striped peppermint candy nobleman */
+    /* 🍬 BARON VON BONBON — striped peppermint candy nobleman */
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
     ctx.fillStyle = m.color
@@ -1332,14 +1702,13 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.strokeStyle = outline
     ctx.lineWidth = 4
     ctx.stroke()
-    // candy stripes
     ctx.fillStyle = '#ffffff'
     for (let i = -2; i <= 2; i++) {
       ctx.fillRect(i * (r * 0.35), -r, r * 0.15, r * 2)
     }
     palFace(ctx, r * 0.65, expr, blinking)
   } else if (b.key === 'drake') {
-    /* 🐲 BRAMBLE FOREST-DRAKE - gentle emerald woodland dragon */
+    /* 🐲 BRAMBLE FOREST-DRAKE — gentle emerald woodland dragon */
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
     ctx.fillStyle = m.color
@@ -1347,12 +1716,11 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.strokeStyle = outline
     ctx.lineWidth = 4
     ctx.stroke()
-    // dragon horns
     circle(ctx, -r * 0.5, -r * 0.8, r * 0.2)
     circle(ctx, r * 0.5, -r * 0.8, r * 0.2)
     palFace(ctx, r * 0.65, expr, blinking)
   } else if (b.key === 'golem') {
-    /* 💎 KING CAELUM GEODE - floating geometric quartz golem */
+    /* 💎 KING CAELUM GEODE — floating geometric quartz golem */
     for (let i = 0; i < 4; i++) {
       const a = time * 2 + (i * Math.PI) / 2
       ctx.fillStyle = '#9d4edd'
@@ -1367,7 +1735,7 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.stroke()
     palFace(ctx, r * 0.65, expr, blinking)
   } else if (b.key === 'cogswell') {
-    /* ⚙️ PROF COGSWELL TANK - clockwork steampunk brass orb with gear teeth */
+    /* ⚙️ PROF COGSWELL TANK — clockwork steampunk brass orb */
     ctx.beginPath()
     ctx.arc(0, 0, r, 0, Math.PI * 2)
     ctx.fillStyle = m.color
@@ -1375,14 +1743,13 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.strokeStyle = outline
     ctx.lineWidth = 4
     ctx.stroke()
-    // gear perimeter
     for (let i = 0; i < 8; i++) {
       const a = time * 1.5 + (i * Math.PI) / 4
       circle(ctx, Math.cos(a) * (r + 5), Math.sin(a) * (r + 5), 4)
     }
     palFace(ctx, r * 0.65, expr, blinking)
   } else if (b.key === 'stella') {
-    /* 👑 SUPERNOVA STELLA - grand rainbow celestial empress */
+    /* 👑 SUPERNOVA STELLA — grand rainbow celestial empress */
     starPath(ctx, 0, 0, r * 1.6, r * 0.8, 12, time * 0.5)
     ctx.fillStyle = 'rgba(255,255,255,0.45)'
     ctx.fill()
@@ -1399,6 +1766,7 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.lineWidth = 4.5
     ctx.stroke()
     palFace(ctx, r * 0.7, expr, blinking)
+  }
 }
 
 /* the boss's name tag + a row of little stars = its health bar! ⭐ */
@@ -2011,11 +2379,38 @@ export default function Home() {
       setHurtKey((k) => k + 1)
       audio.oops()
       addText(g, clamp(m.x, 60, g.w - 60), g.h - 150, 'Oops!', '#ff8fb1')
+
+      // 🧒 KIDS MODE SAFETY NET: The "No Game Over" Bubble Rescue
       if (g.hearts <= 0) {
-        g.state = 'over'
-        setUi('over')
-        audio.stopMusic()
-        audio.gameOverJingle()
+        if (g.mode === 'kids') {
+          g.hearts = MODES.kids.hearts
+          audio.giantPop()
+          addText(g, g.w / 2, g.h * 0.5, '🫧 BUBBLE RESCUE! 🌟', '#ffd93d', 26)
+          // shower stars and push active low hazards back
+          for (let k = 0; k < 12; k++) {
+            g.parts.push({
+              x: g.player.x + rand(-30, 30),
+              y: g.h - 120,
+              vx: rand(-120, 120),
+              vy: rand(-160, -40),
+              life: rand(0.5, 0.9),
+              maxLife: 0.9,
+              color: pick(['#ffd93d', '#ff8fb1', '#70d6ff']),
+              size: rand(4, 7),
+              rot: 0,
+              vr: rand(-5, 5),
+              kind: 'confetti',
+            })
+          }
+          for (const mm of g.monsters) {
+            if (mm.boss < 0 && mm.y > g.h * 0.5) mm.y -= 160
+          }
+        } else {
+          g.state = 'over'
+          setUi('over')
+          audio.stopMusic()
+          audio.gameOverJingle()
+        }
       }
       syncHud()
     }
@@ -2339,7 +2734,9 @@ export default function Home() {
       /* ── 🎁 gift power-ups drift down every little while ──
          Level 1 gets them MORE often, so little kids feel helped! */
       g.puSpawnT -= dt
-      if (g.puSpawnT <= 0 && g.powerups.length < 2) {
+      // 🧒 Kids Mode Dynamic Pity Spawner: drops assistance if hearts <= 2
+      const pityTrigger = g.mode === 'kids' && g.hearts <= 2 && g.powerups.length === 0
+      if ((g.puSpawnT <= 0 || pityTrigger) && g.powerups.length < 2) {
         spawnPowerUp()
         const range = g.level === 0 ? PU.everyLevel1 : PU.every
         g.puSpawnT = rand(range[0], range[1]) * (g.turbo ? 0.25 : 1)
@@ -2468,6 +2865,27 @@ export default function Home() {
         s.x += (s.vx ?? 0) * dt // rainbow fans fly at a slight angle!
         s.wob += dt * 6
         s.x += Math.sin(s.wob) * 9 * dt
+
+        // 🧒 KIDS MODE ASSIST: Soft magnetic homing toward nearest enemy within 180px
+        if (g.mode === 'kids' && !s.giant && g.monsters.length > 0) {
+          let nearestM = null
+          let minDistSq = 180 * 180
+          for (const m of g.monsters) {
+            if (m.y < s.y && m.y > 40) {
+              const ddx = m.x - s.x
+              const ddy = m.y - s.y
+              const dsq = ddx * ddx + ddy * ddy
+              if (dsq < minDistSq) {
+                minDistSq = dsq
+                nearestM = m
+              }
+            }
+          }
+          if (nearestM) {
+            const pull = (nearestM.x - s.x) * 4.5 * dt
+            s.x += pull
+          }
+        }
         if (s.y < -30) {
           g.shots.splice(i, 1)
           continue
@@ -2533,7 +2951,9 @@ export default function Home() {
           if (m.type === 'ghosty' && m.alpha < 0.55) continue
           const dx = s.x - m.x
           const dy = s.y - m.y
-          const rr = m.r + s.r // generous hitboxes = happy kids
+          // Kids Mode: +35% projectile forgiveness & wider hit zone
+          const radiusTolerance = g.mode === 'kids' ? 1.35 : 1.05
+          const rr = (m.r + s.r) * radiusTolerance
           if (dx * dx + dy * dy < rr * rr) {
             g.shots.splice(i, 1)
             m.hp--
