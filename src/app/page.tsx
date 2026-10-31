@@ -48,6 +48,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react'
+import { loadLocalSave, recordLevelCompletion, SavedGameData } from '@/lib/storage'
 import {
   ALL_BOSSES,
   ALL_ENEMIES,
@@ -2358,6 +2359,9 @@ export default function Home() {
       const maxHearts = MODES[g.mode].hearts
       const earned = g.hearts >= maxHearts ? 3 : g.hearts >= Math.ceil(maxHearts / 2) ? 2 : 1
       setStars(earned)
+      try {
+        recordLevelCompletion(g.mode, g.level, earned, g.score, g.monsters.some((mm) => mm.boss >= 0))
+      } catch {}
       if (g.level >= levelsOf(g.mode).length - 1) {
         bigCelebration(g)
         g.state = 'won'
