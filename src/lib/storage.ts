@@ -239,3 +239,4 @@ export function dispatchSilentCloudSync(data: SavedGameData): void {
     }
   }, 1200)
 }
+
