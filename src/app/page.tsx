@@ -1068,6 +1068,53 @@ function drawCloud(ctx: CanvasRenderingContext2D, x: number, y: number, s: numbe
 }
 
 /* 🌄 the whole cheerful background: sky, smiling sun, clouds, hills, flowers */
+
+/* 🌈 LEVEL-BASED PALETTE & DYNAMIC SKY/BOSS VARIATIONS
+   Ensures EVERY level (1 through 120) has a distinct background atmosphere
+   and distinct boss color hue! */
+
+const LEVEL_SKY_PALETTES = [
+  { top: '#a5e8ff', bottom: '#fff3c9', hillDark: '#5ec44f', hillLight: '#8ee06e', name: 'Sunny Morning' },
+  { top: '#ffd1dc', bottom: '#fff0f5', hillDark: '#6b8e23', hillLight: '#98fb98', name: 'Pink Cotton Sky' },
+  { top: '#d4bbfb', bottom: '#ffe4e6', hillDark: '#556b2f', hillLight: '#8fbc8f', name: 'Lilac Bloom' },
+  { top: '#fed7aa', bottom: '#fef08a', hillDark: '#4d7c0f', hillLight: '#84cc16', name: 'Golden Apricot' },
+  { top: '#bae6fd', bottom: '#e0f2fe', hillDark: '#047857', hillLight: '#10b981', name: 'Sky Turquoise' },
+  { top: '#fbcfe8', bottom: '#fef9c3', hillDark: '#15803d', hillLight: '#22c55e', name: 'Peachy Dawn' },
+  { top: '#c7d2fe', bottom: '#fbcfe8', hillDark: '#4338ca', hillLight: '#6366f1', name: 'Twilight Lavender' },
+  { top: '#fecdd3', bottom: '#fed7aa', hillDark: '#b45309', hillLight: '#f59e0b', name: 'Coral Sunset' },
+  { top: '#99f6e4', bottom: '#ccfbf1', hillDark: '#0f766e', hillLight: '#14b8a6', name: 'Sea Mint Lagoon' },
+  { top: '#e9d5ff', bottom: '#fae8ff', hillDark: '#6d28d9', hillLight: '#a855f7', name: 'Mystic Amethyst' },
+]
+
+const BOSS_HUE_ROTATIONS = [
+  '#f278ab', // Bubblegum Pink
+  '#a855f7', // Royal Violet
+  '#3b82f6', // Azure Blue
+  '#10b981', // Emerald Mint
+  '#f59e0b', // Amber Orange
+  '#ef4444', // Ruby Crimson
+  '#06b6d4', // Cyan Wave
+  '#ec4899', // Hot Magenta
+  '#84cc16', // Lime Zing
+  '#8b5cf6', // Electric Purple
+]
+
+function getLevelColors(level: number) {
+  const world = getWorldForLevel(level)
+  const subLevel = level % 10
+  const palette = LEVEL_SKY_PALETTES[subLevel % LEVEL_SKY_PALETTES.length]
+  const bossColor = BOSS_HUE_ROTATIONS[subLevel % BOSS_HUE_ROTATIONS.length]
+
+  return {
+    skyTop: palette.top,
+    skyBottom: palette.bottom,
+    hillDark: palette.hillDark,
+    hillLight: palette.hillLight,
+    bossColor,
+    worldName: world.name,
+  }
+}
+
 function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
   const { w, h } = g
   const world = getWorldForLevel(g.level)
@@ -1112,11 +1159,11 @@ function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
   for (const c of g.clouds) drawCloud(ctx, c.x, c.y, c.s)
 
   // rolling hills / dynamic horizon
-  ctx.fillStyle = world.hillDark
+  ctx.fillStyle = colors.hillDark
   ctx.beginPath()
   ctx.ellipse(w * 0.22, h + 60, w * 0.55, 130, 0, 0, Math.PI * 2)
   ctx.fill()
-  ctx.fillStyle = world.hillLight
+  ctx.fillStyle = colors.hillLight
   ctx.beginPath()
   ctx.ellipse(w * 0.82, h + 70, w * 0.55, 120, 0, 0, Math.PI * 2)
   ctx.fill()
@@ -2082,7 +2129,7 @@ function drawBossBadge(ctx: CanvasRenderingContext2D, m: Monster) {
   ctx.lineWidth = 4
   ctx.strokeStyle = 'rgba(255,255,255,0.92)'
   ctx.strokeText(b.name, m.x, nameY)
-  ctx.fillStyle = '#f278ab'
+  ctx.fillStyle = m.color || '#f278ab'
   ctx.fillText(b.name, m.x, nameY)
   const gap = 16
   const startX = m.x - ((m.maxHp - 1) * gap) / 2
@@ -3069,12 +3116,13 @@ export default function Home() {
       const b = BOSSES[Math.min(BOSSES.length - 1, Math.floor(g.level / 10))]
       const r = clamp(g.w * 0.075, 38, 56) * (g.mode === 'adults' ? 0.85 : 1)
       const hp = bossHpOf(g, b)
+      const lvlColors = getLevelColors(g.level)
       g.monsters.push({
         x: g.w / 2,
         y: -r - 20,
         baseX: g.w / 2,
         r,
-        color: b.color,
+        color: lvlColors.bossColor || b.color,
         type: 'blobby', // bosses are drawn by drawBoss(), type is unused
         move: 'straight',
         boss: Math.floor(g.level / 10),
