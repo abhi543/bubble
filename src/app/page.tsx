@@ -498,6 +498,9 @@ interface Shot {
   kind: 'star' | 'water' | 'heart' | 'rainbow' // each pal shoots their own!
   wob: number
   giant?: boolean // 💥 the one & only GIANT POP bubble!
+  pierce?: number // Rocky / Panda: passes through multiple enemies!
+  bounces?: number // Zippy: bounces off left/right walls!
+  hitIds?: number[] // tracks enemies already hit by this piercing shot
 }
 
 interface Particle {
@@ -2641,23 +2644,130 @@ export default function Home() {
        🌈 with the Rainbow Bubbles power, every shot is a fan of THREE! */
     const shootNow = () => {
       if (g.state !== 'playing' || g.player.cool > 0) return
-      g.player.cool = MODES[g.mode].shootCooldown
-      const kind = CHARACTERS[g.character].bubble // every pal fires their own!
+      const kind = CHARACTERS[g.character].bubble
       const py = g.h - 96
-      // Angled trajectory only applies in Grown-Ups mode; Kids mode fires straight & simple
-      const aimAngle = g.mode === 'adults' ? (g.player.aimAngle ?? 0) : 0
-      const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
-      for (const offset of fan) {
-        const totalAng = aimAngle + offset
-        g.shots.push({
-          x: g.player.x,
-          y: py - 44,
-          vy: -PLAYER.shotSpeed * Math.cos(totalAng),
-          vx: PLAYER.shotSpeed * Math.sin(totalAng),
-          r: kind === 'star' ? 12 : kind === 'heart' ? 11 : 10,
-          kind,
-          wob: rand(0, 6),
-        })
+
+      if (g.mode === 'adults') {
+        // 🎯 GROWN-UPS MODE: UNIQUE PERKS PER CHARACTER
+        const aimAngle = g.player.aimAngle ?? 0
+        const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
+
+        if (g.character === 'rocky') {
+          // 🚀 Rocky: Heavy Piercing Star Shot (pierces 2 enemies!)
+          g.player.cool = 0.52
+          for (const offset of fan) {
+            const ang = aimAngle + offset
+            g.shots.push({
+              x: g.player.x,
+              y: py - 44,
+              vy: -PLAYER.shotSpeed * 1.15 * Math.cos(ang),
+              vx: PLAYER.shotSpeed * 1.15 * Math.sin(ang),
+              r: 15,
+              kind: 'star',
+              wob: rand(0, 6),
+              pierce: 2,
+            })
+          }
+        } else if (g.character === 'dolly') {
+          // 🐬 Dolly: Twin Hydro-Volley (fires 2 parallel bubbles side by side)
+          g.player.cool = 0.44
+          const perpX = Math.cos(aimAngle) * 14
+          const perpY = Math.sin(aimAngle) * 14
+          for (const sign of [-1, 1]) {
+            for (const offset of fan) {
+              const ang = aimAngle + offset
+              g.shots.push({
+                x: g.player.x + perpX * sign,
+                y: py - 44 + perpY * sign,
+                vy: -PLAYER.shotSpeed * Math.cos(ang),
+                vx: PLAYER.shotSpeed * Math.sin(ang),
+                r: 9,
+                kind: 'water',
+                wob: rand(0, 6),
+              })
+            }
+          }
+        } else if (g.character === 'bunny') {
+          // 🐰 Bunny: Rapid-Fire Love Blaster (super fast fire rate!)
+          g.player.cool = 0.22
+          for (const offset of fan) {
+            const ang = aimAngle + offset
+            g.shots.push({
+              x: g.player.x,
+              y: py - 44,
+              vy: -PLAYER.shotSpeed * 1.1 * Math.cos(ang),
+              vx: PLAYER.shotSpeed * 1.1 * Math.sin(ang),
+              r: 10,
+              kind: 'heart',
+              wob: rand(0, 6),
+            })
+          }
+        } else if (g.character === 'zippy') {
+          // 🤖 Zippy: Wall-Bouncing Trick Shot (reflects off side walls 2 times!)
+          g.player.cool = 0.40
+          for (const offset of fan) {
+            const ang = aimAngle + offset
+            g.shots.push({
+              x: g.player.x,
+              y: py - 44,
+              vy: -PLAYER.shotSpeed * Math.cos(ang),
+              vx: PLAYER.shotSpeed * Math.sin(ang),
+              r: 12,
+              kind: 'rainbow',
+              wob: rand(0, 6),
+              bounces: 2,
+            })
+          }
+        } else if (g.character === 'panda') {
+          // 🐼 Panda: Giant Clover Piercer (pierces 3 enemies!)
+          g.player.cool = 0.58
+          for (const offset of fan) {
+            const ang = aimAngle + offset
+            g.shots.push({
+              x: g.player.x,
+              y: py - 44,
+              vy: -PLAYER.shotSpeed * Math.cos(ang),
+              vx: PLAYER.shotSpeed * Math.sin(ang),
+              r: 16,
+              kind: 'star',
+              wob: rand(0, 6),
+              pierce: 3,
+            })
+          }
+        } else {
+          // 🐱 Kitty: Sparkle Spread (fires 3 mini heart pellets)
+          g.player.cool = 0.38
+          const pelletOffsets = [-0.18, 0, 0.18]
+          for (const pOff of pelletOffsets) {
+            for (const offset of fan) {
+              const ang = aimAngle + offset + pOff
+              g.shots.push({
+                x: g.player.x,
+                y: py - 44,
+                vy: -PLAYER.shotSpeed * 0.95 * Math.cos(ang),
+                vx: PLAYER.shotSpeed * 0.95 * Math.sin(ang),
+                r: 8,
+                kind: 'heart',
+                wob: rand(0, 6),
+              })
+            }
+          }
+        }
+      } else {
+        // 🧒 KIDS MODE: Unchanged! Simple, friendly, straight shots
+        g.player.cool = MODES[g.mode].shootCooldown
+        const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
+        for (const offset of fan) {
+          g.shots.push({
+            x: g.player.x,
+            y: py - 44,
+            vy: -PLAYER.shotSpeed * Math.cos(offset),
+            vx: PLAYER.shotSpeed * Math.sin(offset),
+            r: kind === 'star' ? 12 : kind === 'heart' ? 11 : 10,
+            kind,
+            wob: rand(0, 6),
+          })
+        }
       }
       audio.shoot()
     }
@@ -3416,6 +3526,27 @@ export default function Home() {
         s.y += s.vy * dt
         s.x += (s.vx ?? 0) * dt
 
+        // 🤖 Zippy Wall Bounce: reflects off left and right canvas edges
+        if (s.bounces && s.bounces > 0) {
+          if (s.x < s.r && (s.vx ?? 0) < 0) {
+            s.x = s.r
+            s.vx = -s.vx!
+            s.bounces--
+            g.parts.push({
+              x: s.x, y: s.y, vx: rand(20, 60), vy: rand(-30, 30),
+              life: 0.3, maxLife: 0.3, color: '#ffd93d', size: 6, rot: 0, vr: 0, kind: 'sparkle'
+            })
+          } else if (s.x > g.w - s.r && (s.vx ?? 0) > 0) {
+            s.x = g.w - s.r
+            s.vx = -s.vx!
+            s.bounces--
+            g.parts.push({
+              x: s.x, y: s.y, vx: rand(-60, -20), vy: rand(-30, 30),
+              life: 0.3, maxLife: 0.3, color: '#ffd93d', size: 6, rot: 0, vr: 0, kind: 'sparkle'
+            })
+          }
+        }
+
         // Custom Star Bazaar VFX handling
         if (g.vfx === 'music' && Math.random() < 0.25) {
           g.parts.push({
@@ -3523,7 +3654,15 @@ export default function Home() {
           const radiusTolerance = g.mode === 'kids' ? 1.35 : 1.05
           const rr = (m.r + s.r) * radiusTolerance
           if (dx * dx + dy * dy < rr * rr) {
-            g.shots.splice(i, 1)
+            // Pierce check for Rocky / Panda
+            if (s.pierce && s.pierce > 1) {
+              if (!s.hitIds) s.hitIds = []
+              if (s.hitIds.includes(j)) continue
+              s.hitIds.push(j)
+              s.pierce--
+            } else {
+              g.shots.splice(i, 1)
+            }
             m.hp--
             m.hitFlash = 0.25 // squishy boop reaction!
             if (m.boss >= 0) {
