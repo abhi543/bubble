@@ -2408,7 +2408,8 @@ function drawParticles(ctx: CanvasRenderingContext2D, g: GameData) {
 /* 🏹 AIMING TRAJECTORY ARROW
    Draws a bouncy dotted arc with an arrow head showing the shot angle! */
 function drawAimArrow(ctx: CanvasRenderingContext2D, g: GameData) {
-  if (g.state !== 'playing') return
+  // 🎯 Aiming trajectory arrow is exclusive to Grown-Ups mode! (Kids mode keeps clean, simple straight shooting)
+  if (g.state !== 'playing' || g.mode !== 'adults') return
   const p = g.player
   const py = g.h - 96 - 44
   const angle = p.tilt * 1.35 // tilt steers the arrow left and right!
@@ -2640,7 +2641,8 @@ export default function Home() {
       g.player.cool = MODES[g.mode].shootCooldown
       const kind = CHARACTERS[g.character].bubble // every pal fires their own!
       const py = g.h - 96
-      const aimAngle = g.player.tilt * 1.35 // shots fly along the aim arrow direction!
+      // Angled trajectory only applies in Grown-Ups mode; Kids mode fires straight & simple
+      const aimAngle = g.mode === 'adults' ? g.player.tilt * 1.35 : 0
       const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
       for (const offset of fan) {
         const totalAng = aimAngle + offset
