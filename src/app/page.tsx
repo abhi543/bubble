@@ -574,6 +574,7 @@ interface GameData {
   player: {
     x: number
     tilt: number
+    aimAngle?: number
     cool: number
     surprised: number // >0 = "uh-oh!" face after losing a heart
     cheer: number // >0 = hip-hip-hooray face when a level is done
@@ -628,7 +629,7 @@ function freshGame(): GameData {
     cosmetic: save.activeCosmetic || "none",
     vfx: save.activeVFX || "classic",
     time: 0,
-    player: { x: 400, tilt: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
+    player: { x: 400, tilt: 0, aimAngle: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
     targetX: null,
     dragging: false,
     monsters: [],
@@ -2412,8 +2413,8 @@ function drawAimArrow(ctx: CanvasRenderingContext2D, g: GameData) {
   if (g.state !== 'playing' || g.mode !== 'adults') return
   const p = g.player
   const py = g.h - 96 - 44
-  const angle = p.tilt * 1.35 // tilt steers the arrow left and right!
-  const len = 125
+  const angle = p.aimAngle ?? 0 // controls rotate the arrow directly!
+  const len = 175
   const endX = p.x + Math.sin(angle) * len
   const endY = py - Math.cos(angle) * len
 
@@ -2642,7 +2643,7 @@ export default function Home() {
       const kind = CHARACTERS[g.character].bubble // every pal fires their own!
       const py = g.h - 96
       // Angled trajectory only applies in Grown-Ups mode; Kids mode fires straight & simple
-      const aimAngle = g.mode === 'adults' ? g.player.tilt * 1.35 : 0
+      const aimAngle = g.mode === 'adults' ? (g.player.aimAngle ?? 0) : 0
       const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
       for (const offset of fan) {
         const totalAng = aimAngle + offset
@@ -3226,17 +3227,40 @@ export default function Home() {
       if (g.state !== 'playing') return
       showNextIntro() // any "Meet a new friend!" pop-ups waiting their turn?
 
-      /* ── player movement ── */
+      /* ── player movement & grown-ups fixed turret aiming ── */
       const p = g.player
-      let vx = 0
-      if (keys.left) vx -= PLAYER.speed
-      if (keys.right) vx += PLAYER.speed
-      if (g.dragging && g.targetX !== null) {
-        vx = clamp((g.targetX - p.x) * 10, -PLAYER.speed * 1.4, PLAYER.speed * 1.4)
+      if (p.aimAngle === undefined) p.aimAngle = 0
+
+      if (g.mode === 'adults') {
+        // 🎯 GROWN-UPS MODE: Character stays FIXED at center!
+        // Moving controls rotate the aiming arrow instead of moving the character!
+        p.x = g.w / 2
+
+        // Rotate arrow with keyboard Left/Right (or A/D) keys
+        const aimSpeed = 2.4 // radians per second
+        if (keys.left) p.aimAngle -= aimSpeed * dt
+        if (keys.right) p.aimAngle += aimSpeed * dt
+
+        // Aim arrow with mouse/touch drag relative to fixed center player
+        if (g.dragging && g.targetX !== null) {
+          const dx = g.targetX - p.x
+          p.aimAngle = clamp(dx * 0.0038, -1.25, 1.25)
+        }
+        // Clamp arrow between -70 degrees and +70 degrees
+        p.aimAngle = clamp(p.aimAngle, -1.25, 1.25)
+        p.tilt = p.aimAngle * 0.45 // cute character lean in arrow direction
+      } else {
+        // 🧒 KIDS MODE: Classic gentle sliding
+        let vx = 0
+        if (keys.left) vx -= PLAYER.speed
+        if (keys.right) vx += PLAYER.speed
+        if (g.dragging && g.targetX !== null) {
+          vx = clamp((g.targetX - p.x) * 10, -PLAYER.speed * 1.4, PLAYER.speed * 1.4)
+        }
+        p.x = clamp(p.x + vx * dt, 40, g.w - 40)
+        const lean = clamp(vx / PLAYER.speed, -1, 1) * 0.22
+        p.tilt += (lean - p.tilt) * Math.min(1, dt * 10)
       }
-      p.x = clamp(p.x + vx * dt, 40, g.w - 40)
-      const lean = clamp(vx / PLAYER.speed, -1, 1) * 0.22
-      p.tilt += (lean - p.tilt) * Math.min(1, dt * 10)
       p.cool -= dt
       if (keys.shoot) shootNow()
 
