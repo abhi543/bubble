@@ -40,6 +40,7 @@ import {
   DoorOpen,
   Heart,
   PartyPopper,
+  Pause,
   Play,
   RotateCcw,
   Sparkles,
@@ -334,7 +335,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
 
 /* ───────────────────────────── game types ───────────────────────────── */
-type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'levelSelect' | 'playing' | 'levelClear' | 'over' | 'won' | 'bye'
+type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'levelSelect' | 'playing' | 'paused' | 'levelClear' | 'over' | 'won' | 'bye'
 
 interface Monster {
   x: number
@@ -2121,6 +2122,9 @@ export default function Home() {
     backToModes: () => void
     selectCharacter: (c: CharacterId) => void
     next: () => void
+    togglePause: () => void
+    resumeGame: () => void
+    restartLevel: () => void
     toggleMute: () => void
     toMenu: () => void
     bye: () => void
@@ -2348,6 +2352,35 @@ export default function Home() {
       setSelectedWorld(Math.floor(currentHighest / 10) + 1)
       g.state = 'levelSelect'
       setUi('levelSelect')
+    }
+
+    /* ⏸️ Pause the action anytime in the middle of gameplay */
+    const togglePause = () => {
+      audio.click()
+      if (g.state === 'playing') {
+        g.state = 'paused'
+        setUi('paused')
+      } else if (g.state === 'paused') {
+        g.state = 'playing'
+        setUi('playing')
+      }
+    }
+
+    const resumeGame = () => {
+      audio.click()
+      if (g.state === 'paused') {
+        g.state = 'playing'
+        setUi('playing')
+      }
+    }
+
+    const restartLevel = () => {
+      audio.click()
+      g.score = loadLocalSave().totalStars || 0
+      g.hearts = MODES[g.mode].hearts
+      g.active = null
+      g.shield = false
+      beginLevel()
     }
 
     const next = () => {
@@ -2757,7 +2790,7 @@ export default function Home() {
           c.y = rand(30, g.h * 0.35)
         }
       }
-      updateParticles(g, dt)
+      updateParticles(g, g.state === 'paused' ? 0 : dt)
       if (g.state !== 'playing') return
       showNextIntro() // any "Meet a new friend!" pop-ups waiting their turn?
 
@@ -3132,6 +3165,11 @@ export default function Home() {
         keys.shoot = true
         audio.init()
       }
+      if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+        if (g.state === 'playing' || g.state === 'paused') {
+          togglePause()
+        }
+      }
     }
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false
@@ -3193,7 +3231,7 @@ export default function Home() {
       setMuted(audio.muted)
       audio.click()
     }
-    controlsRef.current = { startGame, startLevel, openLevelSelect, showModes, pickMode, backToModes, selectCharacter, next, toggleMute, toMenu, bye }
+    controlsRef.current = { startGame, startLevel, openLevelSelect, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye }
 
     /* ── go! ── */
     let raf = 0
@@ -3201,8 +3239,13 @@ export default function Home() {
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000) // clamp dt so pauses never cause jumps
       last = now
-      update(dt)
-      render(ctx, g)
+      if (g.state === 'paused') {
+        // while paused, render frozen scene and skip simulation updates
+        render(ctx, g)
+      } else {
+        update(dt)
+        render(ctx, g)
+      }
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -3328,7 +3371,7 @@ export default function Home() {
           )}
         </div>
 
-        {/* ── HUD: score + mute button (top-right, always tappable) ── */}
+        {/* ── HUD: score + mute + pause buttons (top-right, always tappable) ── */}
         <div className="absolute right-3 top-3 z-30 flex flex-col items-end gap-2">
           <div className="pointer-events-none flex items-center gap-1.5 rounded-full bg-white/85 px-4 py-2 shadow-md">
             <Star size={24} aria-hidden className="fill-amber-400 text-amber-400" />
@@ -3337,16 +3380,39 @@ export default function Home() {
             </span>
             <span className="sr-only">stars collected</span>
           </div>
-          <button
-            onClick={(e) => {
-              e.currentTarget.blur()
-              controlsRef.current?.toggleMute()
-            }}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-md transition active:scale-90"
-            aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
-          >
-            {muted ? <VolumeX size={24} className="text-gray-500" /> : <Volume2 size={24} className="text-emerald-600" />}
-          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Pause / Resume Button (visible while playing or paused) */}
+            {(ui === 'playing' || ui === 'paused') && (
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.togglePause()
+                }}
+                className={`flex h-12 w-12 items-center justify-center rounded-full shadow-md transition active:scale-90 ${
+                  ui === 'paused'
+                    ? 'bg-amber-400 text-white ring-4 ring-amber-200'
+                    : 'bg-white/90 text-amber-600 hover:bg-white'
+                }`}
+                aria-label={ui === 'paused' ? 'Continue game' : 'Pause game'}
+                title={ui === 'paused' ? 'Continue (Esc / P)' : 'Pause (Esc / P)'}
+              >
+                {ui === 'paused' ? <Play size={24} className="fill-white" /> : <Pause size={24} className="fill-amber-600" />}
+              </button>
+            )}
+
+            {/* Mute Button */}
+            <button
+              onClick={(e) => {
+                e.currentTarget.blur()
+                controlsRef.current?.toggleMute()
+              }}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-md transition active:scale-90"
+              aria-label={muted ? 'Unmute sounds' : 'Mute sounds'}
+            >
+              {muted ? <VolumeX size={24} className="text-gray-500" /> : <Volume2 size={24} className="text-emerald-600" />}
+            </button>
+          </div>
         </div>
 
         {/* 👋 "MEET A NEW FRIEND!" pop-up (also for the big bosses 👑) */}
@@ -3371,6 +3437,79 @@ export default function Home() {
         <div className="pointer-events-none absolute bottom-2 left-3 z-10 hidden text-xs font-bold text-slate-600/70 sm:block">
           ← → move · space = pop!
         </div>
+
+                {/* ════════ OVERLAY: GAME PAUSED ════════ */}
+        {ui === 'paused' && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+            <div className="pop-in my-auto w-full max-w-sm rounded-3xl border-4 border-amber-300 bg-white p-6 text-center shadow-2xl sm:p-7">
+              <div className="floaty text-5xl" aria-hidden>⏸️</div>
+              <h2 className="mt-2 text-2xl font-black text-amber-600 sm:text-3xl">Game Paused</h2>
+              <p className="mt-1 text-sm font-bold text-gray-500">
+                {MODES[hud.mode].levels[hud.level]?.name || `Level ${hud.level + 1}`} · World {Math.floor(hud.level / 10) + 1}
+              </p>
+
+              {/* Status summary */}
+              <div className="my-4 flex items-center justify-center gap-4 rounded-2xl bg-amber-50 py-3 text-xs font-black text-amber-800">
+                <div className="flex items-center gap-1">
+                  <Heart size={16} className="fill-rose-500 text-rose-500" />
+                  <span>{hud.hearts} / {MODES[hud.mode].hearts} Hearts</span>
+                </div>
+                <span className="text-amber-200">|</span>
+                <div className="flex items-center gap-1">
+                  <Star size={16} className="fill-amber-400 text-amber-400" />
+                  <span>{hud.score} Stars</span>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex flex-col gap-2.5">
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur()
+                    controlsRef.current?.resumeGame()
+                  }}
+                  className="flex h-14 w-full items-center justify-center gap-2.5 rounded-full bg-emerald-500 text-xl font-black text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-600 active:scale-95"
+                >
+                  <Play size={24} className="fill-white" aria-hidden /> CONTINUE
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur()
+                    controlsRef.current?.restartLevel()
+                  }}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-amber-200 bg-amber-50 text-sm font-black text-amber-700 shadow-sm transition hover:bg-amber-100 active:scale-95"
+                >
+                  <RotateCcw size={18} aria-hidden /> Restart Level
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur()
+                    controlsRef.current?.openLevelSelect()
+                  }}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-pink-200 bg-pink-50 text-sm font-black text-pink-700 shadow-sm transition hover:bg-pink-100 active:scale-95"
+                >
+                  <span>🗺️ Level Select Map</span>
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur()
+                    controlsRef.current?.toMenu()
+                  }}
+                  className="mt-1 w-full rounded-full py-2 text-xs font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
+                >
+                  Back to Main Menu
+                </button>
+              </div>
+
+              <div className="mt-3 text-[11px] font-bold text-gray-400">
+                Press <kbd className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] text-gray-600">Esc</kbd> or <kbd className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] text-gray-600">P</kbd> to resume
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ════════ OVERLAY: START MENU ════════ */}
         {ui === 'menu' && (
