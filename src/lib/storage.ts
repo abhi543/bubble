@@ -223,7 +223,9 @@ export function persistStars(currentScore: number): void {
   const save = loadLocalSave()
   if (currentScore > (save.totalStars || 0)) {
     save.totalStars = currentScore
-    saveLocalProgress(save)
+    if (save.mode === 'kids') save.kidsStarsTotal = Math.max(save.kidsStarsTotal || 0, currentScore);
+    else save.adultsStarsTotal = Math.max(save.adultsStarsTotal || 0, currentScore);
+    saveLocalProgress(save);
   }
 }
 

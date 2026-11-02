@@ -2433,6 +2433,7 @@ export default function Home() {
         burst(g, m.x, m.y, m.color)
         g.score++
       }
+      persistStars(g.score)
       g.monsters.length = 0
       g.shots.length = 0
       // hush any "new friend" pop-ups — the reward screen takes the stage!
@@ -2669,6 +2670,7 @@ export default function Home() {
         burst(g, m.x, m.y, m.color)
         g.popped++
         g.score++
+        persistStars(g.score)
         g.monsters.splice(j, 1)
       }
       // did the giant pop finish the goal? then here comes the boss!
@@ -3054,6 +3056,7 @@ export default function Home() {
               /* 👑 booping the big boss! */
               audio.bossHit()
               g.score++
+              persistStars(g.score)
               addText(g, m.x + rand(-20, 20), m.y - m.r * 0.4, pick(['Boing!', 'Boop!', 'Pop!']), '#f278ab', 20)
               addText(g, m.x + 28, m.y - m.r * 0.4 - 24, '+1⭐', '#e8a800', 14)
               if (m.hp <= 0) defeatBoss(j) // 🎆 fireworks & a big star bonus!
@@ -3063,6 +3066,7 @@ export default function Home() {
               burst(g, m.x, m.y, m.color) // confetti + sparkles!
               g.popped++
               g.score++
+              persistStars(g.score)
               audio.popFor(g.character) // your pal's own happy pop!
               // sometimes a happy little bonus star tumbles out! ⭐
               if (Math.random() < PU.starChance) {
