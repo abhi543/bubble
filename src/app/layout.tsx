@@ -16,10 +16,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Bubble Pop Adventure — a happy game for kids",
   description: "A colorful, kid-friendly arcade game for ages 5–10. Pop silly smiling monsters with bubbles and stars — no violence, just confetti and sparkles!",
-  keywords: ["Z.ai", "Next.js", "TypeScript", "Tailwind CSS", "shadcn/ui", "AI development", "React"],
-  authors: [{ name: "Z.ai Team" }],
+  keywords: ["Bubble Pop", "Kids Game", "Arcade", "Next.js", "TypeScript", "Tailwind CSS", "React"],
+  authors: [{ name: "Bubble Pop Team" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/bubble.svg",
+    shortcut: "/bubble.svg",
+    apple: "/bubble.svg",
   },
   openGraph: {
     title: "Bubble Pop Adventure",
