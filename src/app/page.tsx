@@ -493,6 +493,7 @@ function freshGame(): GameData {
     w: 800,
     h: 600,
     turbo: typeof window !== 'undefined' && window.location.search.includes('turbo'),
+    mode: initialMode,
     character: savedPal,
     time: 0,
     player: { x: 400, tilt: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
