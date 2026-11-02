@@ -3440,7 +3440,7 @@ export default function Home() {
 
                 {/* ════════ OVERLAY: GAME PAUSED ════════ */}
         {ui === 'paused' && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
             <div className="pop-in my-auto w-full max-w-sm rounded-3xl border-4 border-amber-300 bg-white p-6 text-center shadow-2xl sm:p-7">
               <div className="floaty text-5xl" aria-hidden>⏸️</div>
               <h2 className="mt-2 text-2xl font-black text-amber-600 sm:text-3xl">Game Paused</h2>
