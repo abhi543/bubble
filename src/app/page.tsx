@@ -947,9 +947,9 @@ function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, w, h)
 
-  // ☀️ smiling sun with slowly spinning rays
-  const sx = w - 90
-  const sy = 92
+  // ☀️ smiling sun with slowly spinning rays (positioned clear of top HUD buttons)
+  const sx = w * 0.22
+  const sy = 80
   ctx.save()
   ctx.translate(sx, sy)
   ctx.rotate(g.time * 0.15)
