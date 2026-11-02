@@ -2404,6 +2404,58 @@ function drawParticles(ctx: CanvasRenderingContext2D, g: GameData) {
 }
 
 /* everything currently on screen, painted in the right order */
+
+/* 🏹 AIMING TRAJECTORY ARROW
+   Draws a bouncy dotted arc with an arrow head showing the shot angle! */
+function drawAimArrow(ctx: CanvasRenderingContext2D, g: GameData) {
+  if (g.state !== 'playing') return
+  const p = g.player
+  const py = g.h - 96 - 44
+  const angle = p.tilt * 1.35 // tilt steers the arrow left and right!
+  const len = 125
+  const endX = p.x + Math.sin(angle) * len
+  const endY = py - Math.cos(angle) * len
+
+  ctx.save()
+  // 1. Dotted trajectory path with animated sparkle dots
+  ctx.strokeStyle = 'rgba(255, 217, 61, 0.75)'
+  ctx.lineWidth = 3
+  ctx.setLineDash([6, 6])
+  ctx.lineDashOffset = -g.time * 28 // animated flow upwards
+  ctx.beginPath()
+  ctx.moveTo(p.x, py)
+  ctx.lineTo(endX, endY)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // 2. Glowing Golden Arrow Head
+  ctx.save()
+  ctx.translate(endX, endY)
+  ctx.rotate(angle)
+  // Arrow head triangle
+  ctx.fillStyle = '#ffd93d'
+  ctx.beginPath()
+  ctx.moveTo(0, -14)
+  ctx.lineTo(8, 2)
+  ctx.lineTo(3, 0)
+  ctx.lineTo(3, 7)
+  ctx.lineTo(-3, 7)
+  ctx.lineTo(-3, 0)
+  ctx.lineTo(-8, 2)
+  ctx.closePath()
+  ctx.fill()
+  ctx.strokeStyle = '#e8a800'
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+  // Little sparkling jewel at the tip of the arrow
+  circle(ctx, 0, -14, 2.5)
+  ctx.fillStyle = '#ff8fb1'
+  ctx.fill()
+  ctx.restore()
+
+  ctx.restore()
+}
+
 function render(ctx: CanvasRenderingContext2D, g: GameData) {
   drawBackground(ctx, g)
   for (const st of g.starDrops) drawStarDrop(ctx, st)
@@ -2411,6 +2463,7 @@ function render(ctx: CanvasRenderingContext2D, g: GameData) {
   for (const u of g.powerups) drawPowerUp(ctx, u, g.time)
   for (const s of g.shots) drawShot(ctx, s, g.time)
   drawPlayer(ctx, g)
+  drawAimArrow(ctx, g)
   drawParticles(ctx, g)
   // 🐌 Slow Motion dreamy glow — a soft sleepy ring around the edges
   if (g.active?.type === 'slow') {
@@ -2587,13 +2640,15 @@ export default function Home() {
       g.player.cool = MODES[g.mode].shootCooldown
       const kind = CHARACTERS[g.character].bubble // every pal fires their own!
       const py = g.h - 96
+      const aimAngle = g.player.tilt * 1.35 // shots fly along the aim arrow direction!
       const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
-      for (const ang of fan) {
+      for (const offset of fan) {
+        const totalAng = aimAngle + offset
         g.shots.push({
           x: g.player.x,
           y: py - 44,
-          vy: -PLAYER.shotSpeed * Math.cos(ang),
-          vx: PLAYER.shotSpeed * Math.sin(ang),
+          vy: -PLAYER.shotSpeed * Math.cos(totalAng),
+          vx: PLAYER.shotSpeed * Math.sin(totalAng),
           r: kind === 'star' ? 12 : kind === 'heart' ? 11 : 10,
           kind,
           wob: rand(0, 6),
