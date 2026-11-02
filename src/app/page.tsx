@@ -1117,12 +1117,12 @@ function getLevelColors(level: number) {
 
 function drawBackground(ctx: CanvasRenderingContext2D, g: GameData) {
   const { w, h } = g
-  const world = getWorldForLevel(g.level)
+  const colors = getLevelColors(g.level)
 
-  // sky gradient (reactive to current world)
+  // sky gradient (reactive to current level)
   const grad = ctx.createLinearGradient(0, 0, 0, h)
-  grad.addColorStop(0, world.skyTop)
-  grad.addColorStop(1, world.skyBottom)
+  grad.addColorStop(0, colors.skyTop)
+  grad.addColorStop(1, colors.skyBottom)
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, w, h)
 
