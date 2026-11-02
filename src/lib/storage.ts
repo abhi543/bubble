@@ -34,6 +34,11 @@ export interface SavedGameData {
   unlockedCosmetics: string[]
   activeCosmetic?: string
   activeBooster?: string | null
+  activeVFX?: string
+  unlockedVFX?: string[]
+  unlockedStickers?: string[]
+  islandItems?: string[]
+  zenUnlocked?: boolean
   totalStars: number
 }
 
@@ -106,6 +111,11 @@ export function createDefaultSave(): SavedGameData {
     unlockedCosmetics: [],
     activeCosmetic: 'none',
     activeBooster: null,
+    activeVFX: 'classic',
+    unlockedVFX: ['classic'],
+    unlockedStickers: [],
+    islandItems: ['trampoline'],
+    zenUnlocked: false,
     totalStars: 0,
   }
 }

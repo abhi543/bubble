@@ -169,7 +169,7 @@ const FONT = '"Comic Sans MS", "Chalkboard SE", "Comic Neue", system-ui, sans-se
      bobSpeed        = how fast they bob (bigger = bouncier!)
    The faces (smile / surprised / cheer) are drawn in drawCharacter() below.
    ─────────────────────────────────────────────────────────────────────── */
-type CharacterId = 'rocky' | 'dolly' | 'bunny' | 'zippy'
+type CharacterId = 'rocky' | 'dolly' | 'bunny' | 'zippy' | 'panda' | 'kitty'
 type FaceExpr = 'smile' | 'surprised' | 'cheer'
 
 interface CharacterConfig {
@@ -229,9 +229,31 @@ const CHARACTERS: Record<CharacterId, CharacterConfig> = {
     bobAmp: 3,
     bobSpeed: 2.8,
   },
-}
+  panda: {
+    name: 'Panda Bamboo',
+    emoji: '🐼',
+    tagline: 'shoots clover star bubbles',
+    body: '#ffffff',
+    trim: '#1e293b',
+    belly: '#f1f5f9',
+    bubble: 'star',
+    bobAmp: 5,
+    bobSpeed: 1.9,
+  },
+  kitty: {
+    name: 'Kitty Sparkle',
+    emoji: '🐱',
+    tagline: 'shoots sparkly heart bubbles',
+    body: '#fed7aa',
+    trim: '#ea580c',
+    belly: '#ffedd5',
+    bubble: 'heart',
+    bobAmp: 7,
+    bobSpeed: 2.6,
+  },
+};
 
-const CHARACTER_LIST: CharacterId[] = ['rocky', 'dolly', 'bunny', 'zippy']
+const CHARACTER_LIST: CharacterId[] = ['rocky', 'dolly', 'bunny', 'zippy', 'panda', 'kitty']
 
 /* ───────────────────────────────────────────────────────────────────────────
    SETUP 2⅚ · POWER-UPS 🎁 — happy gifts that float down from the sky!
@@ -334,6 +356,77 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
 
+
+
+/* ════════ 🎨 BUBBLE VFX DEFINITIONS (Level 50+) ════════ */
+export interface VFXDef {
+  id: string
+  name: string
+  emoji: string
+  cost: number
+  reqLevel: number
+  desc: string
+  glowColor: string
+}
+
+export const BUBBLE_VFX: VFXDef[] = [
+  { id: 'classic', name: 'Classic Pop', emoji: '🫧', cost: 0, reqLevel: 0, desc: 'Original happy bubbly projectiles.', glowColor: '#38bdf8' },
+  { id: 'music', name: 'Melody Notes', emoji: '🎵', cost: 30, reqLevel: 50, desc: 'Bubbles chime musical tones as they fly!', glowColor: '#ec4899' },
+  { id: 'galaxy', name: 'Galaxy Stars', emoji: '🌌', cost: 40, reqLevel: 50, desc: 'Cosmic starlight particles and dark purple glow.', glowColor: '#8b5cf6' },
+  { id: 'candy', name: 'Donut Confetti', emoji: '🍩', cost: 50, reqLevel: 50, desc: 'Sprinkles burst from popped enemies!', glowColor: '#f59e0b' },
+]
+
+/* ════════ 🎰 MONSTER STICKERS (Level 30+) ════════ */
+export interface StickerDef {
+  id: string
+  name: string
+  emoji: string
+  rarity: 'Common' | 'Rare' | 'Legendary'
+  fact: string
+}
+
+export const STICKERS: StickerDef[] = [
+  { id: 's_blobby', name: 'Blobby Green', emoji: '🟢', rarity: 'Common', fact: 'Blobby is made of pure sweet lime jelly and loves tickles.' },
+  { id: 's_zoe', name: 'Zigzag Zoe', emoji: '⚡', rarity: 'Common', fact: 'Zoe wiggles because she hears invisible dance beats in the clouds.' },
+  { id: 's_bob', name: 'Bouncy Bob', emoji: '🟣', rarity: 'Common', fact: 'Bob has bounced off the edges over 1,000,000 times without dizziness.' },
+  { id: 's_spike', name: 'Spinny Spike', emoji: '⭐', rarity: 'Rare', fact: 'Spike is a retired shooting star who decided floating was cozier.' },
+  { id: 's_cloud', name: 'Sleepy Cloud', emoji: '☁️', rarity: 'Rare', fact: 'When you boop Sleepy Cloud, it drops peppermint rain.' },
+  { id: 's_ghost', name: 'Sneaky Ghosty', emoji: '👻', rarity: 'Rare', fact: 'Ghosty isn't scary at all—it hides because it gets shy!' },
+  { id: 's_king', name: 'King Blobby', emoji: '👑', rarity: 'Legendary', fact: 'His paper crown was folded by the sun itself!' },
+  { id: 's_bunny', name: 'Big Bunny Boss', emoji: '🐰', rarity: 'Legendary', fact: 'Can jump so high it boops the clouds with its ears.' },
+]
+
+/* ════════ 🐾 SECRET HERO PALS (Level 70+) ════════ */
+export interface SecretPalDef {
+  id: CharacterId
+  name: string
+  emoji: string
+  cost: number
+  reqLevel: number
+  desc: string
+}
+
+export const SECRET_PALS: SecretPalDef[] = [
+  { id: 'panda', name: 'Panda Bamboo', emoji: '🐼', cost: 75, reqLevel: 70, desc: 'Loves green tea & shoots clover star bubbles!' },
+  { id: 'kitty', name: 'Kitty Sparkle', emoji: '🐱', cost: 85, reqLevel: 70, desc: 'Purrs when booping bosses & fires heart sparkles!' },
+]
+
+/* ════════ 🏝️ BUBBLE ISLAND TOYS (Level 60+) ════════ */
+export interface IslandToyDef {
+  id: string
+  name: string
+  emoji: string
+  cost: number
+  reqLevel: number
+  desc: string
+}
+
+export const ISLAND_TOYS: IslandToyDef[] = [
+  { id: 'trampoline', name: 'Rainbow Trampoline', emoji: '🎪', cost: 20, reqLevel: 60, desc: 'Pals bounce 10 feet into the air with giggles!' },
+  { id: 'slide', name: 'Candy Water Slide', emoji: '🛝', cost: 35, reqLevel: 60, desc: 'A swirling strawberry water slide into a bubble pool.' },
+  { id: 'fountain', name: 'Sparkle Star Fountain', emoji: '⛲', cost: 45, reqLevel: 60, desc: 'Shoots golden star droplets into the air!' },
+  { id: 'tree', name: 'Cotton Candy Tree', emoji: '🍭', cost: 60, reqLevel: 60, desc: 'A fluffy sweet tree that sheds rainbow sparkles.' },
+]
 
 /* ════════ ⭐ STAR BAZAAR DEFINITIONS ════════ */
 export interface BoosterDef {
@@ -477,6 +570,7 @@ interface GameData {
   time: number // total seconds elapsed (for animations)
   character: CharacterId // the pal you picked on the selection screen
   cosmetic?: string
+  vfx?: string
   player: {
     x: number
     tilt: number
@@ -532,6 +626,7 @@ function freshGame(): GameData {
     mode: initialMode,
     character: savedPal,
     cosmetic: save.activeCosmetic || "none",
+    vfx: save.activeVFX || "classic",
     time: 0,
     player: { x: 400, tilt: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
     targetX: null,
@@ -1338,6 +1433,86 @@ function drawCharacter(ctx: CanvasRenderingContext2D, id: CharacterId, expr: Fac
     ctx.beginPath()
     ctx.arc(0, -6, 22, -2.3, -1.5)
     ctx.stroke()
+  } else if (id === 'panda') {
+    /* 🐼 PANDA BAMBOO */
+    // round ears
+    ctx.fillStyle = c.trim
+    circle(ctx, -16, -26, 7.5)
+    circle(ctx, 16, -26, 7.5)
+    // body
+    roundRectPath(ctx, -19, -24, 38, 48, 16)
+    ctx.fillStyle = c.body
+    ctx.fill()
+    ctx.strokeStyle = c.trim
+    ctx.lineWidth = 3
+    ctx.stroke()
+    // black arms/vest
+    ctx.fillStyle = c.trim
+    roundRectPath(ctx, -22, -6, 44, 14, 6)
+    ctx.fill()
+    // tummy
+    ctx.beginPath()
+    ctx.ellipse(0, 10, 11, 10, 0, 0, Math.PI * 2)
+    ctx.fillStyle = c.belly
+    ctx.fill()
+    // cute dark eye patches
+    ctx.fillStyle = c.trim
+    ctx.beginPath()
+    ctx.ellipse(-7, -8, 5, 6, -0.3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.ellipse(7, -8, 5, 6, 0.3, 0, Math.PI * 2)
+    ctx.fill()
+    palFace(ctx, 14, expr, blink, 0, -8)
+  } else if (id === 'kitty') {
+    /* 🐱 KITTY SPARKLE */
+    // pointy cat ears
+    ctx.fillStyle = c.trim
+    ctx.beginPath()
+    ctx.moveTo(-16, -18)
+    ctx.lineTo(-9, -34)
+    ctx.lineTo(-2, -18)
+    ctx.closePath()
+    ctx.fill()
+    ctx.beginPath()
+    ctx.moveTo(2, -18)
+    ctx.lineTo(9, -34)
+    ctx.lineTo(16, -18)
+    ctx.closePath()
+    ctx.fill()
+    // inner ear pink
+    ctx.fillStyle = '#ff8fb1'
+    circle(ctx, -9, -24, 3.5)
+    circle(ctx, 9, -24, 3.5)
+    // body
+    roundRectPath(ctx, -18, -20, 36, 46, 15)
+    ctx.fillStyle = c.body
+    ctx.fill()
+    ctx.strokeStyle = c.trim
+    ctx.lineWidth = 3
+    ctx.stroke()
+    // tail
+    ctx.strokeStyle = c.trim
+    ctx.lineWidth = 4
+    ctx.beginPath()
+    ctx.moveTo(14, 18)
+    ctx.quadraticCurveTo(28, 12, 24, -2)
+    ctx.stroke()
+    // tummy
+    ctx.beginPath()
+    ctx.ellipse(0, 8, 9, 11, 0, 0, Math.PI * 2)
+    ctx.fillStyle = c.belly
+    ctx.fill()
+    // whiskers
+    ctx.strokeStyle = '#5b4a3f'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(-12, -4); ctx.lineTo(-22, -6)
+    ctx.moveTo(-12, 0); ctx.lineTo(-22, 2)
+    ctx.moveTo(12, -4); ctx.lineTo(22, -6)
+    ctx.moveTo(12, 0); ctx.lineTo(22, 2)
+    ctx.stroke()
+    palFace(ctx, 15, expr, blink, 0, -6)
   } else {
     /* 🤖 ZIPPY THE ROBOT — a small, round, friendly yellow robot */
     // 💨 little jet puffs below
@@ -2240,6 +2415,11 @@ export default function Home() {
     closeBazaar: () => void
     buyBooster: (bId: string, cost: number) => void
     toggleCosmetic: (cId: string, cost: number) => void
+    pullGachapon: () => void
+    toggleVFX: (vId: string, cost: number) => void
+    buySecretPal: (pId: CharacterId, cost: number) => void
+    buyIslandToy: (tId: string, cost: number) => void
+    unlockZenMode: () => void
     showModes: () => void
     pickMode: (mode: Mode) => void
     backToModes: () => void
@@ -2410,6 +2590,8 @@ export default function Home() {
         saveLocalProgress(activeSave)
         setSaveData(activeSave)
       }
+      g.cosmetic = activeSave.activeCosmetic || 'none'
+      g.vfx = activeSave.activeVFX || 'classic'
       g.state = 'playing'
       setUi('playing')
       addText(g, g.w / 2, g.h * 0.35, `${levelsOf(g.mode)[g.level].name} — GO!`, '#ff8fb1')
@@ -3096,7 +3278,23 @@ export default function Home() {
       for (let i = g.shots.length - 1; i >= 0; i--) {
         const s = g.shots[i]
         s.y += s.vy * dt
-        s.x += (s.vx ?? 0) * dt // rainbow fans fly at a slight angle!
+        s.x += (s.vx ?? 0) * dt
+
+        // Custom Star Bazaar VFX handling
+        if (g.vfx === 'music' && Math.random() < 0.25) {
+          g.parts.push({
+            x: s.x, y: s.y, vx: rand(-20, 20), vy: rand(10, 40),
+            life: 0.4, maxLife: 0.4, color: '#ec4899', size: 14, rot: 0, vr: 0,
+            kind: 'text', text: '♪'
+          })
+        } else if (g.vfx === 'galaxy' && Math.random() < 0.3) {
+          g.parts.push({
+            x: s.x, y: s.y, vx: rand(-15, 15), vy: rand(15, 35),
+            life: 0.35, maxLife: 0.35, color: '#c084fc', size: 3, rot: 0, vr: 0,
+            kind: 'sparkle'
+          })
+        }
+ // rainbow fans fly at a slight angle!
         s.wob += dt * 6
         s.x += Math.sin(s.wob) * 9 * dt
 
@@ -3450,7 +3648,116 @@ export default function Home() {
       syncHud()
     }
 
-    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye }
+    
+    const pullGachapon = () => {
+      audio.init()
+      const save = loadLocalSave()
+      const cost = 20
+      if ((save.totalStars || 0) < cost) {
+        audio.oops()
+        return
+      }
+      save.totalStars -= cost
+      if (!save.unlockedStickers) save.unlockedStickers = []
+      // Roll a sticker (biased towards uncollected)
+      const uncollected = STICKERS.filter(st => !save.unlockedStickers!.includes(st.id))
+      const won = uncollected.length > 0 ? pick(uncollected) : pick(STICKERS)
+      if (!save.unlockedStickers.includes(won.id)) {
+        save.unlockedStickers.push(won.id)
+      }
+      audio.giantPop()
+      audio.win()
+      saveLocalProgress(save)
+      setSaveData({ ...save })
+      g.score = save.totalStars
+      syncHud()
+    }
+
+    const toggleVFX = (vId: string, cost: number) => {
+      audio.init()
+      const save = loadLocalSave()
+      if (!save.unlockedVFX) save.unlockedVFX = ['classic']
+      if (save.unlockedVFX.includes(vId)) {
+        audio.click()
+        save.activeVFX = vId
+      } else {
+        if ((save.totalStars || 0) < cost) {
+          audio.oops()
+          return
+        }
+        save.totalStars -= cost
+        save.unlockedVFX.push(vId)
+        save.activeVFX = vId
+        audio.levelUp()
+      }
+      saveLocalProgress(save)
+      setSaveData({ ...save })
+      g.score = save.totalStars
+      syncHud()
+    }
+
+    const buySecretPal = (pId: CharacterId, cost: number) => {
+      audio.init()
+      const save = loadLocalSave()
+      if (!save.unlockedCharacters) save.unlockedCharacters = ['rocky']
+      if (save.unlockedCharacters.includes(pId)) {
+        audio.click()
+        selectCharacter(pId)
+        return
+      }
+      if ((save.totalStars || 0) < cost) {
+        audio.oops()
+        return
+      }
+      save.totalStars -= cost
+      save.unlockedCharacters.push(pId)
+      saveLocalProgress(save)
+      setSaveData({ ...save })
+      selectCharacter(pId)
+      audio.levelUp()
+      g.score = save.totalStars
+      syncHud()
+    }
+
+    const buyIslandToy = (tId: string, cost: number) => {
+      audio.init()
+      const save = loadLocalSave()
+      if (!save.islandItems) save.islandItems = ['trampoline']
+      if (save.islandItems.includes(tId)) {
+        audio.click()
+        return
+      }
+      if ((save.totalStars || 0) < cost) {
+        audio.oops()
+        return
+      }
+      save.totalStars -= cost
+      save.islandItems.push(tId)
+      audio.powerUp()
+      saveLocalProgress(save)
+      setSaveData({ ...save })
+      g.score = save.totalStars
+      syncHud()
+    }
+
+    const unlockZenMode = () => {
+      audio.init()
+      const save = loadLocalSave()
+      const cost = 100
+      if ((save.totalStars || 0) < cost || save.zenUnlocked) {
+        if (!save.zenUnlocked) audio.oops()
+        return
+      }
+      save.totalStars -= cost
+      save.zenUnlocked = true
+      audio.win()
+      saveLocalProgress(save)
+      setSaveData({ ...save })
+      g.score = save.totalStars
+      syncHud()
+    }
+
+    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, pullGachapon, toggleVFX, buySecretPal, buyIslandToy, unlockZenMode, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye }
 
     /* ── go! ── */
     let raf = 0
@@ -3817,40 +4124,322 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* ── SECTION 3: MYSTERY CLAW MACHINE & STICKERS (TEASER: Level 30) ── */}
-                    <div className="rounded-2xl border-2 border-dashed border-pink-200 bg-pink-50/50 p-3.5 text-center opacity-85">
+                    
+                    {/* ── SECTION 3: MYSTERY MONSTER CLAW MACHINE & STICKERS (Unlocks Level 30) ── */}
+                    <div className="rounded-2xl border-2 border-pink-100 bg-pink-50/70 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xl">🎰</span>
-                          <h4 className="text-xs font-black text-pink-900 sm:text-sm">Mystery Monster Claw Machine</h4>
+                          <h3 className="text-sm font-black text-pink-900 sm:text-base">Monster Claw Machine & Stickers</h3>
                         </div>
-                        <span className="rounded-full bg-pink-200 px-2 py-0.5 text-[10px] font-black text-pink-800">
-                          🔒 Unlocks at Level 30
-                        </span>
+                        {highestLvl < 29 ? (
+                          <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-black text-slate-600">
+                            🔒 Clears at Level 30
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                            ✓ UNLOCKED
+                          </span>
+                        )}
                       </div>
-                      <p className="mt-1 text-[11px] text-pink-700">
-                        Collect silly monster stickers & scrapbooks with fun secret facts!
-                      </p>
+                      <p className="mt-1 text-xs text-pink-700">Pull the claw for 20 ⭐ to win collectible stickers with fun monster lore!</p>
+
+                      <div className="mt-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex items-center gap-2 rounded-xl bg-white p-2.5 shadow-sm">
+                          <span className="text-3xl">🪀</span>
+                          <div className="text-xs">
+                            <span className="font-bold text-slate-700">Album Collection: </span>
+                            <span className="font-black text-pink-600">{(s.unlockedStickers || []).length} / {STICKERS.length} Stickers</span>
+                          </div>
+                        </div>
+
+                        <button
+                          disabled={highestLvl < 29 || currentStars < 20}
+                          onClick={() => controlsRef.current?.pullGachapon()}
+                          className={`flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-xs font-black shadow-md transition ${
+                            highestLvl < 29
+                              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                              : currentStars >= 20
+                              ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:from-pink-600 hover:to-rose-600 active:scale-95'
+                              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <span>PULL CLAW</span>
+                          <span className="flex items-center gap-0.5 rounded-full bg-white/20 px-2 py-0.5 text-[11px]">
+                            <Star size={11} className="fill-white" /> 20 ⭐
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* Sticker scrapbook display */}
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {STICKERS.map((st) => {
+                          const hasIt = (s.unlockedStickers || []).includes(st.id)
+                          return (
+                            <div
+                              key={st.id}
+                              className={`flex flex-col items-center rounded-xl border p-2 text-center transition ${
+                                hasIt
+                                  ? 'border-pink-200 bg-white shadow-sm'
+                                  : 'border-dashed border-slate-200 bg-slate-100/50 opacity-40'
+                              }`}
+                            >
+                              <span className="text-2xl">{hasIt ? st.emoji : '❓'}</span>
+                              <span className="mt-1 text-[11px] font-black text-slate-800">{hasIt ? st.name : 'Unknown'}</span>
+                              <span className="mt-0.5 text-[9px] font-bold text-pink-500">{hasIt ? st.rarity : '???'}</span>
+                              {hasIt && <p className="mt-1 line-clamp-2 text-[9px] text-slate-500">{st.fact}</p>}
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
 
-                    {/* ── SECTION 4: BUBBLE ISLAND (TEASER: Level 60+) ── */}
-                    <div className="rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-3.5 text-center opacity-85">
+                    {/* ── SECTION 4: BUBBLE VFX & POP EFFECTS (Unlocks Level 50) ── */}
+                    <div className="rounded-2xl border-2 border-amber-100 bg-amber-50/70 p-3.5 sm:p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">✨</span>
+                          <h3 className="text-sm font-black text-amber-900 sm:text-base">Bubble VFX & Pop Effects</h3>
+                        </div>
+                        {highestLvl < 49 ? (
+                          <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-black text-slate-600">
+                            🔒 Clears at Level 50
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                            ✓ UNLOCKED
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-amber-700">Equip custom bubble trails and confetti explosions!</p>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {BUBBLE_VFX.map((v) => {
+                          const isLocked = highestLvl < (v.reqLevel - 1)
+                          const isOwned = (s.unlockedVFX || ['classic']).includes(v.id)
+                          const isEquipped = (s.activeVFX || 'classic') === v.id
+                          const canAfford = currentStars >= v.cost
+
+                          return (
+                            <button
+                              key={v.id}
+                              disabled={isLocked || (!isOwned && !canAfford)}
+                              onClick={() => controlsRef.current?.toggleVFX(v.id, v.cost)}
+                              className={`flex flex-col items-center justify-between rounded-xl border-2 p-2.5 text-center transition ${
+                                isLocked
+                                  ? 'border-dashed border-slate-300 bg-slate-100/60 opacity-60 cursor-not-allowed'
+                                  : isEquipped
+                                  ? 'border-amber-500 bg-amber-100 shadow-md ring-2 ring-amber-300'
+                                  : isOwned
+                                  ? 'border-emerald-300 bg-white hover:border-emerald-500'
+                                  : canAfford
+                                  ? 'border-amber-200 bg-white hover:border-amber-400 active:scale-95'
+                                  : 'border-slate-200 bg-white/70 opacity-60'
+                              }`}
+                            >
+                              <span className="text-2xl">{v.emoji}</span>
+                              <span className="mt-1 text-xs font-black text-slate-800">{v.name}</span>
+                              <span className="mt-0.5 line-clamp-2 text-[10px] text-slate-500">{v.desc}</span>
+                              <div className="mt-2 w-full">
+                                {isLocked ? (
+                                  <span className="text-[10px] font-bold text-slate-400">Lvl 50</span>
+                                ) : isEquipped ? (
+                                  <span className="block w-full rounded-full bg-amber-600 py-0.5 text-[10px] font-black text-white">
+                                    ACTIVE ✨
+                                  </span>
+                                ) : isOwned ? (
+                                  <span className="block w-full rounded-full border border-amber-300 bg-amber-50 py-0.5 text-[10px] font-bold text-amber-700">
+                                    SELECT
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center justify-center gap-1 rounded-full bg-amber-400 py-0.5 text-xs font-black text-white shadow-sm">
+                                    <Star size={11} className="fill-white" /> {v.cost} ⭐
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ── SECTION 5: BUBBLE ISLAND PLAYGROUND (Unlocks Level 60) ── */}
+                    <div className="rounded-2xl border-2 border-emerald-100 bg-emerald-50/70 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="text-xl">🏝️</span>
-                          <h4 className="text-xs font-black text-emerald-900 sm:text-sm">Bubble Island Sanctuary</h4>
+                          <h3 className="text-sm font-black text-emerald-900 sm:text-base">Bubble Island Playground</h3>
                         </div>
-                        <span className="rounded-full bg-emerald-200 px-2 py-0.5 text-[10px] font-black text-emerald-800">
-                          🔒 Unlocks at Level 60
-                        </span>
+                        {highestLvl < 59 ? (
+                          <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-black text-slate-600">
+                            🔒 Clears at Level 60
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                            ✓ UNLOCKED
+                          </span>
+                        )}
                       </div>
-                      <p className="mt-1 text-[11px] text-emerald-700">
-                        Build trampolines, rainbow slides & candy trees for your pals!
-                      </p>
+                      <p className="mt-1 text-xs text-emerald-700">Build attractions on your sanctuary island for your pals!</p>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {ISLAND_TOYS.map((t) => {
+                          const isLocked = highestLvl < (t.reqLevel - 1)
+                          const isOwned = (s.islandItems || ['trampoline']).includes(t.id)
+                          const canAfford = currentStars >= t.cost
+
+                          return (
+                            <button
+                              key={t.id}
+                              disabled={isLocked || isOwned || !canAfford}
+                              onClick={() => controlsRef.current?.buyIslandToy(t.id, t.cost)}
+                              className={`flex flex-col items-center justify-between rounded-xl border-2 p-2.5 text-center transition ${
+                                isLocked
+                                  ? 'border-dashed border-slate-300 bg-slate-100/60 opacity-60 cursor-not-allowed'
+                                  : isOwned
+                                  ? 'border-emerald-400 bg-emerald-100/60 shadow-sm'
+                                  : canAfford
+                                  ? 'border-emerald-200 bg-white hover:border-emerald-400 active:scale-95'
+                                  : 'border-slate-200 bg-white/70 opacity-60'
+                              }`}
+                            >
+                              <span className="text-3xl">{t.emoji}</span>
+                              <span className="mt-1 text-xs font-black text-slate-800">{t.name}</span>
+                              <span className="mt-0.5 line-clamp-2 text-[10px] text-slate-500">{t.desc}</span>
+                              <div className="mt-2 w-full">
+                                {isLocked ? (
+                                  <span className="text-[10px] font-bold text-slate-400">Lvl 60</span>
+                                ) : isOwned ? (
+                                  <span className="block w-full rounded-full bg-emerald-600 py-0.5 text-[10px] font-black text-white">
+                                    BUILT 🎪
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center justify-center gap-1 rounded-full bg-amber-400 py-0.5 text-xs font-black text-white shadow-sm">
+                                    <Star size={11} className="fill-white" /> {t.cost} ⭐
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ── SECTION 6: SECRET HERO PALS (Unlocks Level 70) ── */}
+                    <div className="rounded-2xl border-2 border-indigo-100 bg-indigo-50/70 p-3.5 sm:p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🐾</span>
+                          <h3 className="text-sm font-black text-indigo-900 sm:text-base">Secret Hero Pals</h3>
+                        </div>
+                        {highestLvl < 69 ? (
+                          <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-black text-slate-600">
+                            🔒 Clears at Level 70
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                            ✓ UNLOCKED
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-indigo-700">Adopt brand-new playable pals with their own cheerful bubbles!</p>
+
+                      <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        {SECRET_PALS.map((p) => {
+                          const isLocked = highestLvl < (p.reqLevel - 1)
+                          const isUnlocked = (s.unlockedCharacters || []).includes(p.id)
+                          const isSelected = hud.character === p.id
+                          const canAfford = currentStars >= p.cost
+
+                          return (
+                            <button
+                              key={p.id}
+                              disabled={isLocked || (!isUnlocked && !canAfford)}
+                              onClick={() => controlsRef.current?.buySecretPal(p.id, p.cost)}
+                              className={`flex items-center justify-between rounded-xl border-2 p-3 text-left transition ${
+                                isLocked
+                                  ? 'border-dashed border-slate-300 bg-slate-100/60 opacity-60 cursor-not-allowed'
+                                  : isSelected
+                                  ? 'border-indigo-500 bg-indigo-100 shadow-md ring-2 ring-indigo-300'
+                                  : isUnlocked
+                                  ? 'border-emerald-300 bg-white hover:border-emerald-500'
+                                  : canAfford
+                                  ? 'border-indigo-200 bg-white hover:border-indigo-400 active:scale-95'
+                                  : 'border-slate-200 bg-white/70 opacity-60'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span className="text-4xl">{p.emoji}</span>
+                                <div>
+                                  <div className="text-sm font-black text-slate-800">{p.name}</div>
+                                  <div className="text-xs text-slate-500">{p.desc}</div>
+                                </div>
+                              </div>
+                              <div>
+                                {isLocked ? (
+                                  <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-bold text-slate-500">Lvl 70</span>
+                                ) : isSelected ? (
+                                  <span className="rounded-full bg-indigo-600 px-3 py-1 text-xs font-black text-white">PLAYING</span>
+                                ) : isUnlocked ? (
+                                  <span className="rounded-full bg-emerald-500 px-3 py-1 text-xs font-black text-white">CHOOSE</span>
+                                ) : (
+                                  <span className="flex items-center gap-1 rounded-full bg-amber-400 px-2.5 py-1 text-xs font-black text-white shadow-sm">
+                                    <Star size={12} className="fill-white" /> {p.cost} ⭐
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ── SECTION 7: SECRET RAINBOW ZEN VAULT (Unlocks Level 100+) ── */}
+                    <div className="rounded-2xl border-2 border-rose-100 bg-gradient-to-r from-rose-50 to-amber-50 p-3.5 sm:p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🌈</span>
+                          <h3 className="text-sm font-black text-rose-900 sm:text-base">Zen Pop Mode & Rainbow Vault</h3>
+                        </div>
+                        {highestLvl < 99 ? (
+                          <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-black text-slate-600">
+                            🔒 Clears at Level 100
+                          </span>
+                        ) : s.zenUnlocked ? (
+                          <span className="rounded-full bg-emerald-500 px-2.5 py-0.5 text-[10px] font-black text-white">
+                            ✓ UNLOCKED
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-amber-400 px-2.5 py-0.5 text-[10px] font-black text-white">
+                            READY TO UNLOCK
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-rose-700">Infinite gentle bubble popping with zero penalties, soothing chimes, and rainbow fireworks.</p>
+
+                      <div className="mt-3 flex items-center justify-between rounded-xl bg-white/80 p-3">
+                        <div className="text-xs font-bold text-slate-700">
+                          {s.zenUnlocked ? '🌟 Master Vault Unlocked: Zen Mode Active!' : 'Unlock Endless Zen Mode (100 ⭐)'}
+                        </div>
+                        {!s.zenUnlocked && (
+                          <button
+                            disabled={highestLvl < 99 || currentStars < 100}
+                            onClick={() => controlsRef.current?.unlockZenMode()}
+                            className={`flex items-center gap-1 rounded-full px-4 py-1.5 text-xs font-black shadow-md transition ${
+                              highestLvl >= 99 && currentStars >= 100
+                                ? 'bg-gradient-to-r from-amber-400 to-rose-400 text-white active:scale-95'
+                                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            <Star size={12} className="fill-white" /> UNLOCK 100 ⭐
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )
               })()}
+
 
               {/* Close Button */}
               <button
