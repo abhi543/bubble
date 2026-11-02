@@ -391,7 +391,7 @@ export const STICKERS: StickerDef[] = [
   { id: 's_bob', name: 'Bouncy Bob', emoji: '🟣', rarity: 'Common', fact: 'Bob has bounced off the edges over 1,000,000 times without dizziness.' },
   { id: 's_spike', name: 'Spinny Spike', emoji: '⭐', rarity: 'Rare', fact: 'Spike is a retired shooting star who decided floating was cozier.' },
   { id: 's_cloud', name: 'Sleepy Cloud', emoji: '☁️', rarity: 'Rare', fact: 'When you boop Sleepy Cloud, it drops peppermint rain.' },
-  { id: 's_ghost', name: 'Sneaky Ghosty', emoji: '👻', rarity: 'Rare', fact: 'Ghosty isn't scary at all—it hides because it gets shy!' },
+  { id: 's_ghost', name: 'Sneaky Ghosty', emoji: '👻', rarity: 'Rare', fact: "Ghosty isn't scary at all—it hides because it gets shy!" },
   { id: 's_king', name: 'King Blobby', emoji: '👑', rarity: 'Legendary', fact: 'His paper crown was folded by the sun itself!' },
   { id: 's_bunny', name: 'Big Bunny Boss', emoji: '🐰', rarity: 'Legendary', fact: 'Can jump so high it boops the clouds with its ears.' },
 ]
@@ -3994,6 +3994,7 @@ export default function Home() {
                 return (
                   <div className="mt-4 space-y-5">
                     {/* ── SECTION 1: PRE-LEVEL BOOSTERS (Unlocks Level 10) ── */}
+                    {highestLvl >= 9 && (
                     <div className="rounded-2xl border-2 border-sky-100 bg-sky-50/70 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -4054,8 +4055,10 @@ export default function Home() {
                         })}
                       </div>
                     </div>
+                    )}
 
                     {/* ── SECTION 2: PAL DRESSING ROOM / HATS (Unlocks Level 20) ── */}
+                    {highestLvl >= 19 && (
                     <div className="rounded-2xl border-2 border-purple-100 bg-purple-50/70 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -4123,9 +4126,10 @@ export default function Home() {
                         })}
                       </div>
                     </div>
+                    )}
 
-                    
                     {/* ── SECTION 3: MYSTERY MONSTER CLAW MACHINE & STICKERS (Unlocks Level 30) ── */}
+                    {highestLvl >= 29 && (
                     <div className="rounded-2xl border-2 border-pink-100 bg-pink-50/70 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -4193,8 +4197,10 @@ export default function Home() {
                         })}
                       </div>
                     </div>
+                    )}
 
                     {/* ── SECTION 4: BUBBLE VFX & POP EFFECTS (Unlocks Level 50) ── */}
+                    {highestLvl >= 49 && (
                     <div className="rounded-2xl border-2 border-amber-100 bg-amber-50/70 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -4262,8 +4268,10 @@ export default function Home() {
                         })}
                       </div>
                     </div>
+                    )}
 
                     {/* ── SECTION 5: BUBBLE ISLAND PLAYGROUND (Unlocks Level 60) ── */}
+                    {highestLvl >= 59 && (
                     <div className="rounded-2xl border-2 border-emerald-100 bg-emerald-50/70 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -4324,8 +4332,10 @@ export default function Home() {
                         })}
                       </div>
                     </div>
+                    )}
 
                     {/* ── SECTION 6: SECRET HERO PALS (Unlocks Level 70) ── */}
+                    {highestLvl >= 69 && (
                     <div className="rounded-2xl border-2 border-indigo-100 bg-indigo-50/70 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -4393,8 +4403,10 @@ export default function Home() {
                         })}
                       </div>
                     </div>
+                    )}
 
                     {/* ── SECTION 7: SECRET RAINBOW ZEN VAULT (Unlocks Level 100+) ── */}
+                    {highestLvl >= 99 && (
                     <div className="rounded-2xl border-2 border-rose-100 bg-gradient-to-r from-rose-50 to-amber-50 p-3.5 sm:p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -4436,6 +4448,7 @@ export default function Home() {
                         )}
                       </div>
                     </div>
+                    )}
                   </div>
                 )
               })()}
@@ -4593,18 +4606,27 @@ export default function Home() {
                   <span className="text-lg" aria-hidden>🗺️</span>
                   <span>SELECT LEVEL (1–120)</span>
                 </button>
-                {/* 🛍️ Star Bazaar Shop Button */}
-                <button
-                  onClick={(e) => {
-                    e.currentTarget.blur()
-                    controlsRef.current?.openBazaar()
-                  }}
-                  className="flex h-13 w-full items-center justify-center gap-2 rounded-full border-2 border-amber-300 bg-gradient-to-r from-amber-100 to-amber-200/80 px-4 py-3 text-base font-black text-amber-900 shadow-sm transition hover:from-amber-200 hover:to-amber-300 active:scale-95"
-                >
-                  <span className="text-xl" aria-hidden>⭐</span>
-                  <span>STAR BAZAAR & TOY SHOP</span>
-                  <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs text-white">✨ SHOP</span>
-                </button>
+                {/* 🛍️ Star Bazaar Shop Button - only appears once player clears World 1 (Level 10+) */}
+                {(() => {
+                  const s = saveData || (mounted ? loadLocalSave() : null)
+                  const curMode = s?.mode || 'kids'
+                  const highestLvl = s ? (curMode === 'kids' ? s.kidsHighestLevel : s.adultsHighestLevel) : 0
+                  if (highestLvl < 9) return null
+
+                  return (
+                    <button
+                      onClick={(e) => {
+                        e.currentTarget.blur()
+                        controlsRef.current?.openBazaar()
+                      }}
+                      className="flex h-13 w-full items-center justify-center gap-2 rounded-full border-2 border-amber-300 bg-gradient-to-r from-amber-100 to-amber-200/80 px-4 py-3 text-base font-black text-amber-900 shadow-sm transition hover:from-amber-200 hover:to-amber-300 active:scale-95"
+                    >
+                      <span className="text-xl" aria-hidden>⭐</span>
+                      <span>STAR BAZAAR & TOY SHOP</span>
+                      <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs text-white">✨ SHOP</span>
+                    </button>
+                  )
+                })()}
 
 
                 {/* Switch Mode / Pal / New Adventure button */}
