@@ -2157,25 +2157,24 @@ export default function Home() {
   const [pal, setPal] = useState<CharacterId>('rocky') // pal highlighted on the selection screen
   const [selectedWorld, setSelectedWorld] = useState<number>(1) // active world on the 120-level select map
   const [saveData, setSaveData] = useState<SavedGameData | null>(null)
+  const [mounted, setMounted] = useState<boolean>(false)
 
   // remember which mode & pal you chose last visit and hydrate save data
   useEffect(() => {
-    const id = setTimeout(() => {
-      try {
-        const save = loadLocalSave()
-        setSaveData(save)
-        const currentMode = save.mode || 'kids'
-        const highestLvl = currentMode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
-        setSelectedWorld(Math.floor(highestLvl / 10) + 1)
-        const saved = localStorage.getItem('bubblePopMode')
-        if (saved === 'kids' || saved === 'adults') setLastMode(saved)
-        const savedPal = localStorage.getItem('bubblePopCharacter')
-        if (savedPal === 'rocky' || savedPal === 'dolly' || savedPal === 'bunny' || savedPal === 'zippy') setPal(savedPal)
-      } catch {
-        /* private browsing — no problem */
-      }
-    }, 0)
-    return () => clearTimeout(id)
+    setMounted(true)
+    try {
+      const save = loadLocalSave()
+      setSaveData(save)
+      const currentMode = save.mode || 'kids'
+      const highestLvl = currentMode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
+      setSelectedWorld(Math.floor(highestLvl / 10) + 1)
+      const saved = localStorage.getItem('bubblePopMode')
+      if (saved === 'kids' || saved === 'adults') setLastMode(saved)
+      const savedPal = localStorage.getItem('bubblePopCharacter')
+      if (savedPal === 'rocky' || savedPal === 'dolly' || savedPal === 'bunny' || savedPal === 'zippy') setPal(savedPal)
+    } catch {
+      /* private browsing — no problem */
+    }
   }, [])
 
   useEffect(() => {
@@ -3354,7 +3353,7 @@ export default function Home() {
 
         {/* ── HUD: level & progress (top-center; below hearts on phones) ── */}
         <div className="pointer-events-none absolute left-1/2 top-[68px] z-10 w-32 -translate-x-1/2 rounded-2xl bg-white/85 px-3 py-2 text-center shadow-md sm:top-3 sm:w-44 sm:px-4">
-          <div className="text-sm font-extrabold text-amber-600 sm:text-base">{MODES[hud.mode].levels[hud.level].name}</div>
+          <div className="text-sm font-extrabold text-amber-600 sm:text-base">{MODES[hud.mode]?.levels[hud.level]?.name || `Level ${hud.level + 1}`}</div>
           <div className="text-[10px] font-bold text-amber-500">World {Math.floor(hud.level / 10) + 1} of 12</div>
           <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-amber-100">
             <div
@@ -3626,9 +3625,9 @@ export default function Home() {
               {(() => {
                 const wId = (selectedWorld as 1|2|3|4|5|6|7|8|9|10|11|12)
                 const wCfg = WORLDS[wId] || WORLDS[1]
-                const curSave = saveData || loadLocalSave()
-                const highestLevel = hud.mode === 'kids' ? curSave.kidsHighestLevel : curSave.adultsHighestLevel
-                const recordMap = hud.mode === 'kids' ? curSave.kidsLevelsRecord : curSave.adultsLevelsRecord
+                const curSave = saveData || (mounted ? loadLocalSave() : null)
+                const highestLevel = curSave ? (hud.mode === 'kids' ? curSave.kidsHighestLevel : curSave.adultsHighestLevel) : 0
+                const recordMap = curSave ? (hud.mode === 'kids' ? curSave.kidsLevelsRecord : curSave.adultsLevelsRecord) : {}
                 const worldUnlocked = (wId - 1) * 10 <= highestLevel
 
                 return (
@@ -3756,7 +3755,7 @@ export default function Home() {
                       <div className="flex items-center justify-between text-xs font-bold text-gray-400 px-1">
                         <span>Recovery Code:</span>
                         <span className="font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                          {curSave.profile.recoveryCode}
+                          {mounted && curSave ? curSave.profile.recoveryCode : 'LOADING...'}
                         </span>
                       </div>
                     </div>
@@ -3829,7 +3828,7 @@ export default function Home() {
               </p>
               <div className="mx-auto mt-2 flex items-center justify-center gap-1.5 rounded-full bg-amber-100/80 px-3 py-1 text-xs font-extrabold text-amber-800">
                 <span>Passcode:</span>
-                <span className="font-mono tracking-wider">{loadLocalSave().profile.recoveryCode}</span>
+                <span className="font-mono tracking-wider">{mounted && saveData ? saveData.profile.recoveryCode : 'LOADING...'}</span>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 {CHARACTER_LIST.map((id) => {
@@ -3899,7 +3898,7 @@ export default function Home() {
             <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
               <PartyPopper size={52} className="mx-auto text-pink-500" aria-hidden />
               <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">
-                {MODES[hud.mode].levels[hud.level].name} Complete!
+                {MODES[hud.mode]?.levels[hud.level]?.name || `Level ${hud.level + 1}`} Complete!
               </h2>
               <p className="mt-1 text-base font-bold text-gray-500">
                 You popped {goal} silly friends — and booped the boss! 🎉
