@@ -49,7 +49,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react'
-import { loadLocalSave, persistStars, recordLevelCompletion, SavedGameData } from '@/lib/storage'
+import { loadLocalSave, persistStars, recordLevelCompletion, saveLocalProgress, SavedGameData } from '@/lib/storage'
 import {
   ALL_BOSSES,
   ALL_ENEMIES,
@@ -334,8 +334,43 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
 
+
+/* ════════ ⭐ STAR BAZAAR DEFINITIONS ════════ */
+export interface BoosterDef {
+  id: string
+  name: string
+  emoji: string
+  cost: number
+  reqLevel: number // level required to unlock
+  desc: string
+}
+
+export interface CosmeticDef {
+  id: string
+  name: string
+  emoji: string
+  cost: number
+  reqLevel: number
+  desc: string
+  hatKind: 'party' | 'shades' | 'crown' | 'pirate' | 'flower'
+}
+
+export const BOOSTERS: BoosterDef[] = [
+  { id: 'shield', name: 'Bubble Shield', emoji: '🫧', cost: 5, reqLevel: 10, desc: 'Start the level with a bubble shield already ready!' },
+  { id: 'heart', name: 'Extra Heart', emoji: '💗', cost: 8, reqLevel: 10, desc: 'Start with +1 bonus heart above your maximum!' },
+  { id: 'magnet', name: 'Star Charm', emoji: '🧲', cost: 10, reqLevel: 10, desc: 'Tumble stars drift straight to you for the first 30 seconds!' },
+]
+
+export const COSMETICS: CosmeticDef[] = [
+  { id: 'hat_party', name: 'Party Cone Hat', emoji: '🥳', cost: 15, reqLevel: 20, desc: 'A festive party cone hat for all your pals!', hatKind: 'party' },
+  { id: 'hat_shades', name: 'Cool Shades', emoji: '😎', cost: 20, reqLevel: 20, desc: 'Ultra-cool superstar sunglasses!', hatKind: 'shades' },
+  { id: 'hat_flower', name: 'Flower Crown', emoji: '🌸', cost: 25, reqLevel: 20, desc: 'A pretty garland of blooming meadow daisies.', hatKind: 'flower' },
+  { id: 'hat_pirate', name: 'Pirate Tricorne', emoji: '🏴‍☠️', cost: 35, reqLevel: 20, desc: 'Ahoy! A brave swashbuckler pirate hat.', hatKind: 'pirate' },
+  { id: 'hat_crown', name: 'Golden Tiara', emoji: '👑', cost: 50, reqLevel: 20, desc: 'A royal gleaming golden crown with ruby jewels.', hatKind: 'crown' },
+]
+
 /* ───────────────────────────── game types ───────────────────────────── */
-type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'levelSelect' | 'playing' | 'paused' | 'levelClear' | 'over' | 'won' | 'bye'
+type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'levelSelect' | 'playing' | 'paused' | 'levelClear' | 'over' | 'won' | 'bye' | 'bazaar'
 
 interface Monster {
   x: number
@@ -441,6 +476,7 @@ interface GameData {
   turbo: boolean // "?turbo" testing mode
   time: number // total seconds elapsed (for animations)
   character: CharacterId // the pal you picked on the selection screen
+  cosmetic?: string
   player: {
     x: number
     tilt: number
@@ -495,6 +531,7 @@ function freshGame(): GameData {
     turbo: typeof window !== 'undefined' && window.location.search.includes('turbo'),
     mode: initialMode,
     character: savedPal,
+    cosmetic: save.activeCosmetic || "none",
     time: 0,
     player: { x: 400, tilt: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
     targetX: null,
@@ -1027,6 +1064,7 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: GameData) {
   const expr: FaceExpr = p.surprised > 0 ? 'surprised' : p.cheer > 0 ? 'cheer' : 'smile'
   const blink = p.blink < 0 && p.blink > -0.15
   drawCharacter(ctx, g.character, expr, g.time, blink)
+  drawPalHat(ctx, g.cosmetic || "none", g.character)
   ctx.restore()
   // 🫧 the Bubble Shield — a soft shiny bubble that blocks one hit!
   if (g.shield) {
@@ -1054,6 +1092,86 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: GameData) {
 /* 🎨 THE FOUR PALS — every friend is drawn centered at (0,0), about 85px tall.
    Want to change a character? Tweak the shapes & colors right here!
    (The names & colors themselves live in CHARACTERS at the top.) */
+
+function drawPalHat(ctx: CanvasRenderingContext2D, hatId: string, id: CharacterId) {
+  if (!hatId || hatId === 'none') return
+  ctx.save()
+  // Adjust hat anchor per character
+  let hx = 0
+  let hy = -35
+  if (id === 'rocky') hy = -44
+  if (id === 'dolly') hy = -28
+  if (id === 'bunny') hy = -38
+  if (id === 'zippy') hy = -32
+
+  ctx.translate(hx, hy)
+  if (hatId === 'hat_party') {
+    // Party cone hat
+    ctx.beginPath()
+    ctx.moveTo(0, -22)
+    ctx.lineTo(8, 0)
+    ctx.lineTo(-8, 0)
+    ctx.closePath()
+    ctx.fillStyle = '#ff8fb1'
+    ctx.fill()
+    ctx.strokeStyle = '#ffd93d'
+    ctx.lineWidth = 2
+    ctx.stroke()
+    // pompom
+    circle(ctx, 0, -24, 3)
+    ctx.fillStyle = '#ffd93d'
+    ctx.fill()
+  } else if (hatId === 'hat_shades') {
+    // Cool sunglasses
+    ctx.fillStyle = '#1e293b'
+    roundRectPath(ctx, -14, -4, 12, 8, 2)
+    ctx.fill()
+    roundRectPath(ctx, 2, -4, 12, 8, 2)
+    ctx.fill()
+    ctx.strokeStyle = '#f59e0b'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(-2, 0)
+    ctx.lineTo(2, 0)
+    ctx.stroke()
+  } else if (hatId === 'hat_flower') {
+    // Flower crown
+    const cols = ['#ff8fb1', '#ffd93d', '#70d6ff', '#b18aff', '#ff9f43']
+    for (let i = 0; i < 5; i++) {
+      const fx = (i - 2) * 6
+      circle(ctx, fx, 0, 3.2)
+      ctx.fillStyle = cols[i]
+      ctx.fill()
+    }
+  } else if (hatId === 'hat_pirate') {
+    // Pirate hat
+    ctx.fillStyle = '#0f172a'
+    ctx.beginPath()
+    ctx.ellipse(0, 0, 16, 6, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.moveTo(-12, 0)
+    ctx.lineTo(0, -14)
+    ctx.lineTo(12, 0)
+    ctx.closePath()
+    ctx.fill()
+    ctx.fillStyle = '#f8fafc'
+    circle(ctx, 0, -6, 2) // mini skull emblem
+  } else if (hatId === 'hat_crown') {
+    // Golden crown
+    crownPath(ctx, -11, -12, 22, 12)
+    ctx.fillStyle = '#ffd93d'
+    ctx.fill()
+    ctx.strokeStyle = '#e8a800'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    circle(ctx, 0, -8, 1.8)
+    ctx.fillStyle = '#ff4d6d'
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
 function drawCharacter(ctx: CanvasRenderingContext2D, id: CharacterId, expr: FaceExpr, t: number, blink = false) {
   const c = CHARACTERS[id]
   ctx.lineJoin = 'round'
@@ -1419,7 +1537,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     }
     case 'puffer': {
       /* 🐡 PRICKLY PUFFER — swells up with round spines when close to player */
-      const distToPlayer = Math.abs(g.player.x - m.x)
+      const distToPlayer = Math.abs(m.baseX - m.x)
       const swell = clamp(1 + (1 - Math.min(1, distToPlayer / 200)) * 0.35, 1, 1.4)
       ctx.save()
       ctx.scale(swell, swell)
@@ -2118,6 +2236,10 @@ export default function Home() {
     startGame: (chosenLevel?: number) => void
     startLevel: (levelIndex: number) => void
     openLevelSelect: () => void
+    openBazaar: () => void
+    closeBazaar: () => void
+    buyBooster: (bId: string, cost: number) => void
+    toggleCosmetic: (cId: string, cost: number) => void
     showModes: () => void
     pickMode: (mode: Mode) => void
     backToModes: () => void
@@ -2270,6 +2392,24 @@ export default function Home() {
       g.player.cheer = 0
       g.dragging = false
       g.targetX = null
+      // Apply pre-level booster if bought
+      const activeSave = loadLocalSave()
+      if (activeSave.activeBooster === 'shield') {
+        g.shield = true
+        addText(g, g.w / 2, g.h * 0.45, '🫧 BOOSTER: SHIELD READY!', '#38bdf8', 22)
+      } else if (activeSave.activeBooster === 'heart') {
+        g.hearts = MODES[g.mode].hearts + 1
+        addText(g, g.w / 2, g.h * 0.45, '💗 BOOSTER: +1 EXTRA HEART!', '#f43f5e', 22)
+      } else if (activeSave.activeBooster === 'magnet') {
+        g.active = { type: 'magnet', t: 25, max: 25, startedAt: g.time }
+        addText(g, g.w / 2, g.h * 0.45, '🧲 BOOSTER: STAR MAGNET!', '#fbbf24', 22)
+      }
+      // Consume booster after starting
+      if (activeSave.activeBooster) {
+        activeSave.activeBooster = null
+        saveLocalProgress(activeSave)
+        setSaveData(activeSave)
+      }
       g.state = 'playing'
       setUi('playing')
       addText(g, g.w / 2, g.h * 0.35, `${levelsOf(g.mode)[g.level].name} — GO!`, '#ff8fb1')
@@ -2962,7 +3102,7 @@ export default function Home() {
 
         // 🧒 KIDS MODE ASSIST: Soft magnetic homing toward nearest enemy within 180px
         if (g.mode === 'kids' && !s.giant && g.monsters.length > 0) {
-          let nearestM = null
+          let nearestM: Monster | null = null
           let minDistSq = 180 * 180
           for (const m of g.monsters) {
             if (m.y < s.y && m.y > 40) {
@@ -3238,7 +3378,79 @@ export default function Home() {
       setMuted(audio.muted)
       audio.click()
     }
-    controlsRef.current = { startGame, startLevel, openLevelSelect, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye }
+    
+    const openBazaar = () => {
+      audio.init()
+      audio.click()
+      const save = loadLocalSave()
+      setSaveData(save)
+      g.state = 'bazaar'
+      setUi('bazaar')
+    }
+
+    const closeBazaar = () => {
+      audio.click()
+      g.state = 'menu'
+      setUi('menu')
+    }
+
+    const buyBooster = (bId: string, cost: number) => {
+      audio.init()
+      const save = loadLocalSave()
+      if ((save.totalStars || 0) < cost) {
+        audio.oops()
+        return
+      }
+      if (save.activeBooster === bId) {
+        // Toggle off / cancel booster
+        save.activeBooster = null
+        save.totalStars += cost
+        audio.pop()
+      } else {
+        // Refund previous booster if active
+        if (save.activeBooster) {
+          const prevB = BOOSTERS.find(b => b.id === save.activeBooster)
+          if (prevB) save.totalStars += prevB.cost
+        }
+        save.totalStars -= cost
+        save.activeBooster = bId
+        audio.powerUp()
+      }
+      saveLocalProgress(save)
+      setSaveData({ ...save })
+      g.score = save.totalStars
+      syncHud()
+    }
+
+    const toggleCosmetic = (cId: string, cost: number) => {
+      audio.init()
+      const save = loadLocalSave()
+      if (!save.unlockedCosmetics) save.unlockedCosmetics = []
+
+      if (save.unlockedCosmetics.includes(cId)) {
+        // Already owned: equip or unequip
+        audio.click()
+        save.activeCosmetic = save.activeCosmetic === cId ? 'none' : cId
+        g.cosmetic = save.activeCosmetic
+      } else {
+        // Needs purchase
+        if ((save.totalStars || 0) < cost) {
+          audio.oops()
+          return
+        }
+        save.totalStars -= cost
+        save.unlockedCosmetics.push(cId)
+        save.activeCosmetic = cId
+        g.cosmetic = cId
+        audio.levelUp()
+      }
+      saveLocalProgress(save)
+      setSaveData({ ...save })
+      g.score = save.totalStars
+      syncHud()
+    }
+
+    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye }
 
     /* ── go! ── */
     let raf = 0
@@ -3445,7 +3657,216 @@ export default function Home() {
           ← → move · space = pop!
         </div>
 
-                {/* ════════ OVERLAY: GAME PAUSED ════════ */}
+                
+        {/* ════════ OVERLAY: ⭐ STAR BAZAAR & TOY SHOP ════════ */}
+        {ui === 'bazaar' && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/50 p-4 backdrop-blur-sm">
+            <div className="pop-in my-auto max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl border-4 border-amber-300 bg-gradient-to-b from-amber-50 to-white p-5 shadow-2xl sm:p-7">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-amber-200 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400 text-2xl shadow-sm">⭐</div>
+                  <div>
+                    <h2 className="text-xl font-black text-amber-700 sm:text-2xl">Star Bazaar & Toy Shop</h2>
+                    <p className="text-xs font-bold text-amber-600/80">Spend your stars on boosters & cute hats!</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 rounded-full bg-amber-400 px-3.5 py-1.5 font-black text-white shadow-md">
+                  <Star size={18} className="fill-white" />
+                  <span className="text-base">{saveData?.totalStars ?? hud.score}</span>
+                </div>
+              </div>
+
+              {/* Player level milestone status */}
+              {(() => {
+                const s = saveData || loadLocalSave()
+                const curMode = s.mode || 'kids'
+                const highestLvl = curMode === 'kids' ? s.kidsHighestLevel : s.adultsHighestLevel
+                const currentStars = s.totalStars || 0
+
+                return (
+                  <div className="mt-4 space-y-5">
+                    {/* ── SECTION 1: PRE-LEVEL BOOSTERS (Unlocks Level 10) ── */}
+                    <div className="rounded-2xl border-2 border-sky-100 bg-sky-50/70 p-3.5 sm:p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🚀</span>
+                          <h3 className="text-sm font-black text-sky-900 sm:text-base">Pre-Level Boosters</h3>
+                        </div>
+                        {highestLvl < 9 ? (
+                          <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-black text-slate-600">
+                            🔒 Clears at Level 10
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                            ✓ UNLOCKED
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-sky-700">Equip one booster before starting your next level!</p>
+
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        {BOOSTERS.map((b) => {
+                          const isLocked = highestLvl < (b.reqLevel - 1)
+                          const isActive = s.activeBooster === b.id
+                          const canAfford = currentStars >= b.cost
+
+                          return (
+                            <button
+                              key={b.id}
+                              disabled={isLocked || (!isActive && !canAfford)}
+                              onClick={() => controlsRef.current?.buyBooster(b.id, b.cost)}
+                              className={`flex flex-col items-center justify-between rounded-xl border-2 p-2.5 text-center transition ${
+                                isLocked
+                                  ? 'border-dashed border-slate-300 bg-slate-100/60 opacity-60 cursor-not-allowed'
+                                  : isActive
+                                  ? 'border-emerald-500 bg-emerald-50 shadow-md ring-2 ring-emerald-300'
+                                  : canAfford
+                                  ? 'border-sky-200 bg-white hover:border-sky-400 active:scale-95'
+                                  : 'border-slate-200 bg-white/70 opacity-60'
+                              }`}
+                            >
+                              <span className="text-2xl">{b.emoji}</span>
+                              <span className="mt-1 text-xs font-black text-slate-800">{b.name}</span>
+                              <span className="mt-0.5 line-clamp-2 text-[10px] text-slate-500">{b.desc}</span>
+                              <div className="mt-2 w-full">
+                                {isLocked ? (
+                                  <span className="text-[10px] font-bold text-slate-400">Lvl 10</span>
+                                ) : isActive ? (
+                                  <span className="block w-full rounded-full bg-emerald-500 py-1 text-[11px] font-black text-white">
+                                    READY! ✓
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center justify-center gap-1 rounded-full bg-amber-400 py-0.5 text-xs font-black text-white shadow-sm">
+                                    <Star size={12} className="fill-white" /> {b.cost} ⭐
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ── SECTION 2: PAL DRESSING ROOM / HATS (Unlocks Level 20) ── */}
+                    <div className="rounded-2xl border-2 border-purple-100 bg-purple-50/70 p-3.5 sm:p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🎩</span>
+                          <h3 className="text-sm font-black text-purple-900 sm:text-base">Pal Dressing Room (Hats)</h3>
+                        </div>
+                        {highestLvl < 19 ? (
+                          <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[11px] font-black text-slate-600">
+                            🔒 Clears at Level 20
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                            ✓ UNLOCKED
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-purple-700">Give your pal stylish headwear to wear in every level!</p>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {COSMETICS.map((c) => {
+                          const isLocked = highestLvl < (c.reqLevel - 1)
+                          const isOwned = (s.unlockedCosmetics || []).includes(c.id)
+                          const isEquipped = s.activeCosmetic === c.id
+                          const canAfford = currentStars >= c.cost
+
+                          return (
+                            <button
+                              key={c.id}
+                              disabled={isLocked || (!isOwned && !canAfford)}
+                              onClick={() => controlsRef.current?.toggleCosmetic(c.id, c.cost)}
+                              className={`flex flex-col items-center justify-between rounded-xl border-2 p-2.5 text-center transition ${
+                                isLocked
+                                  ? 'border-dashed border-slate-300 bg-slate-100/60 opacity-60 cursor-not-allowed'
+                                  : isEquipped
+                                  ? 'border-purple-500 bg-purple-100 shadow-md ring-2 ring-purple-300'
+                                  : isOwned
+                                  ? 'border-emerald-300 bg-white hover:border-emerald-500'
+                                  : canAfford
+                                  ? 'border-purple-200 bg-white hover:border-purple-400 active:scale-95'
+                                  : 'border-slate-200 bg-white/70 opacity-60'
+                              }`}
+                            >
+                              <span className="text-3xl">{c.emoji}</span>
+                              <span className="mt-1 text-xs font-black text-slate-800">{c.name}</span>
+                              <span className="mt-0.5 text-[10px] text-slate-500">{c.desc}</span>
+                              <div className="mt-2 w-full">
+                                {isLocked ? (
+                                  <span className="text-[10px] font-bold text-slate-400">Lvl 20</span>
+                                ) : isEquipped ? (
+                                  <span className="block w-full rounded-full bg-purple-600 py-1 text-[11px] font-black text-white">
+                                    EQUIPPED 👑
+                                  </span>
+                                ) : isOwned ? (
+                                  <span className="block w-full rounded-full border border-purple-300 bg-purple-50 py-1 text-[11px] font-bold text-purple-700">
+                                    WEAR HAT
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center justify-center gap-1 rounded-full bg-amber-400 py-0.5 text-xs font-black text-white shadow-sm">
+                                    <Star size={12} className="fill-white" /> {c.cost} ⭐
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* ── SECTION 3: MYSTERY CLAW MACHINE & STICKERS (TEASER: Level 30) ── */}
+                    <div className="rounded-2xl border-2 border-dashed border-pink-200 bg-pink-50/50 p-3.5 text-center opacity-85">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🎰</span>
+                          <h4 className="text-xs font-black text-pink-900 sm:text-sm">Mystery Monster Claw Machine</h4>
+                        </div>
+                        <span className="rounded-full bg-pink-200 px-2 py-0.5 text-[10px] font-black text-pink-800">
+                          🔒 Unlocks at Level 30
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-pink-700">
+                        Collect silly monster stickers & scrapbooks with fun secret facts!
+                      </p>
+                    </div>
+
+                    {/* ── SECTION 4: BUBBLE ISLAND (TEASER: Level 60+) ── */}
+                    <div className="rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-3.5 text-center opacity-85">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🏝️</span>
+                          <h4 className="text-xs font-black text-emerald-900 sm:text-sm">Bubble Island Sanctuary</h4>
+                        </div>
+                        <span className="rounded-full bg-emerald-200 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                          🔒 Unlocks at Level 60
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11px] text-emerald-700">
+                        Build trampolines, rainbow slides & candy trees for your pals!
+                      </p>
+                    </div>
+                  </div>
+                )
+              })()}
+
+              {/* Close Button */}
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.closeBazaar()
+                }}
+                className="mt-6 flex h-13 w-full items-center justify-center gap-2 rounded-full bg-amber-400 py-3 text-base font-black text-white shadow-lg shadow-amber-200 transition hover:bg-amber-500 active:scale-95"
+              >
+                <span>BACK TO MENU</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+{/* ════════ OVERLAY: GAME PAUSED ════════ */}
         {ui === 'paused' && (
           <div className="absolute inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/40 p-4 backdrop-blur-sm">
             <div className="pop-in my-auto w-full max-w-sm rounded-3xl border-4 border-amber-300 bg-white p-6 text-center shadow-2xl sm:p-7">
@@ -3583,6 +4004,19 @@ export default function Home() {
                   <span className="text-lg" aria-hidden>🗺️</span>
                   <span>SELECT LEVEL (1–120)</span>
                 </button>
+                {/* 🛍️ Star Bazaar Shop Button */}
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur()
+                    controlsRef.current?.openBazaar()
+                  }}
+                  className="flex h-13 w-full items-center justify-center gap-2 rounded-full border-2 border-amber-300 bg-gradient-to-r from-amber-100 to-amber-200/80 px-4 py-3 text-base font-black text-amber-900 shadow-sm transition hover:from-amber-200 hover:to-amber-300 active:scale-95"
+                >
+                  <span className="text-xl" aria-hidden>⭐</span>
+                  <span>STAR BAZAAR & TOY SHOP</span>
+                  <span className="rounded-full bg-amber-400 px-2 py-0.5 text-xs text-white">✨ SHOP</span>
+                </button>
+
 
                 {/* Switch Mode / Pal / New Adventure button */}
                 {hud.level > 0 && (

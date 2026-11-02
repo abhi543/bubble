@@ -32,6 +32,8 @@ export interface SavedGameData {
   adultsLevelsRecord: Record<number, LevelRecord>
   unlockedCharacters: string[]
   unlockedCosmetics: string[]
+  activeCosmetic?: string
+  activeBooster?: string | null
   totalStars: number
 }
 
@@ -102,6 +104,8 @@ export function createDefaultSave(): SavedGameData {
     },
     unlockedCharacters: ['rocky'],
     unlockedCosmetics: [],
+    activeCosmetic: 'none',
+    activeBooster: null,
     totalStars: 0,
   }
 }
