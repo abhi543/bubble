@@ -581,6 +581,7 @@ interface GameData {
     blink: number // counts down to the next cute blink
   }
   targetX: number | null // finger/mouse position while dragging
+  targetY?: number | null
   dragging: boolean
   monsters: Monster[]
   shots: Shot[]
@@ -631,6 +632,7 @@ function freshGame(): GameData {
     time: 0,
     player: { x: 400, tilt: 0, aimAngle: 0, cool: 0, surprised: 0, cheer: 0, blink: 2 },
     targetX: null,
+    targetY: null,
     dragging: false,
     monsters: [],
     shots: [],
@@ -2677,6 +2679,7 @@ export default function Home() {
       g.player.cheer = 0
       g.dragging = false
       g.targetX = null
+      g.targetY = null
       // Apply pre-level booster if bought
       const activeSave = loadLocalSave()
       if (activeSave.activeBooster === 'shield') {
@@ -3236,19 +3239,23 @@ export default function Home() {
         // Moving controls rotate the aiming arrow instead of moving the character!
         p.x = g.w / 2
 
-        // Rotate arrow with keyboard Left/Right (or A/D) keys
-        const aimSpeed = 2.4 // radians per second
+        // 🔄 360-Degree Aiming: Rotate freely with Left/Right (or A/D) keys
+        const aimSpeed = 3.2 // radians per second
         if (keys.left) p.aimAngle -= aimSpeed * dt
         if (keys.right) p.aimAngle += aimSpeed * dt
 
-        // Aim arrow with mouse/touch drag relative to fixed center player
-        if (g.dragging && g.targetX !== null) {
+        // 🎯 Aim directly at cursor/finger anywhere on screen (Full 360°)
+        if (g.dragging && g.targetX !== null && g.targetY !== undefined && g.targetY !== null) {
+          const py = g.h - 96 - 44
           const dx = g.targetX - p.x
-          p.aimAngle = clamp(dx * 0.0038, -1.25, 1.25)
+          const dy = g.targetY - py
+          // Angle 0 is straight up, positive clockwise
+          p.aimAngle = Math.atan2(dx, -dy)
         }
-        // Clamp arrow between -70 degrees and +70 degrees
-        p.aimAngle = clamp(p.aimAngle, -1.25, 1.25)
-        p.tilt = p.aimAngle * 0.45 // cute character lean in arrow direction
+        // Keep angle normalized between -PI and +PI
+        while (p.aimAngle > Math.PI) p.aimAngle -= Math.PI * 2
+        while (p.aimAngle < -Math.PI) p.aimAngle += Math.PI * 2
+        p.tilt = clamp(p.aimAngle, -1, 1) * 0.45 // cute character lean
       } else {
         // 🧒 KIDS MODE: Classic gentle sliding
         let vx = 0
@@ -3447,7 +3454,7 @@ export default function Home() {
             s.x += pull
           }
         }
-        if (s.y < -30) {
+        if (s.y < -50 || s.y > g.h + 80 || s.x < -80 || s.x > g.w + 80) {
           g.shots.splice(i, 1)
           continue
         }
@@ -3659,33 +3666,57 @@ export default function Home() {
 
     /* ── touch & mouse controls (pointer events cover both) ──
        drag = move the rocket · quick tap = shoot 🫧                */
-    const rectX = (e: PointerEvent) => e.clientX - canvas.getBoundingClientRect().left
+    const rectPos = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    }
     const onPointerDown = (e: PointerEvent) => {
       audio.init()
       if (drag.active) return
       drag.active = true
       drag.id = e.pointerId
-      drag.startX = rectX(e)
+      const pos = rectPos(e)
+      drag.startX = pos.x
       drag.t0 = performance.now()
       drag.moved = false
       canvas.setPointerCapture(e.pointerId)
       if (g.state === 'playing') {
         g.dragging = true
-        g.targetX = drag.startX
+        g.targetX = pos.x
+        g.targetY = pos.y
+        if (g.mode === 'adults') {
+          // Immediately aim towards tapped point
+          const py = g.h - 96 - 44
+          g.player.aimAngle = Math.atan2(pos.x - g.player.x, -(pos.y - py))
+        }
       }
     }
     const onPointerMove = (e: PointerEvent) => {
       if (!drag.active || e.pointerId !== drag.id) return
-      const x = rectX(e)
-      if (Math.abs(x - drag.startX) > 12) drag.moved = true
-      if (g.state === 'playing' && g.dragging) g.targetX = x
+      const pos = rectPos(e)
+      if (Math.abs(pos.x - drag.startX) > 12) drag.moved = true
+      if (g.state === 'playing' && g.dragging) {
+        g.targetX = pos.x
+        g.targetY = pos.y
+        if (g.mode === 'adults') {
+          const py = g.h - 96 - 44
+          g.player.aimAngle = Math.atan2(pos.x - g.player.x, -(pos.y - py))
+        }
+      }
     }
     const onPointerUp = (e: PointerEvent) => {
       if (!drag.active || e.pointerId !== drag.id) return
       drag.active = false
       g.dragging = false
-      const quick = performance.now() - drag.t0 < 300
-      if (g.state === 'playing' && !drag.moved && quick) shootNow() // it was a tap!
+      const quick = performance.now() - drag.t0 < 450
+      // In Grown-Ups mode: tap or release after aiming immediately shoots!
+      if (g.state === 'playing') {
+        if (g.mode === 'adults') {
+          shootNow()
+        } else if (!drag.moved && quick) {
+          shootNow() // Kids mode tap
+        }
+      }
     }
     const onPointerCancel = () => {
       drag.active = false
