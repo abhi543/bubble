@@ -191,14 +191,15 @@ export function recordLevelCompletion(
     }
   }
 
-  // Recalculate stars total
+  // Recalculate stars total - ensure totalStars never decreases on refresh
   let starsSum = 0
   for (const k in recordMap) {
     starsSum += recordMap[k].stars
   }
-  if (isKids) save.kidsStarsTotal = starsSum
-  else save.adultsStarsTotal = starsSum
-  save.totalStars = save.kidsStarsTotal + save.adultsStarsTotal
+  if (isKids) save.kidsStarsTotal = Math.max(save.kidsStarsTotal || 0, starsSum)
+  else save.adultsStarsTotal = Math.max(save.adultsStarsTotal || 0, starsSum)
+  // totalStars retains all earned score stars and level completions
+  save.totalStars = Math.max(save.totalStars || 0, score, save.kidsStarsTotal + save.adultsStarsTotal)
 
   // Automatic character unlocks based on star milestones
   if (save.totalStars >= 30 && !save.unlockedCharacters.includes('dolly')) {
@@ -213,6 +214,17 @@ export function recordLevelCompletion(
 
   saveLocalProgress(save)
   return save
+}
+
+/**
+ * Persist collected gameplay stars immediately so refreshing never loses score stars
+ */
+export function persistStars(currentScore: number): void {
+  const save = loadLocalSave()
+  if (currentScore > (save.totalStars || 0)) {
+    save.totalStars = currentScore
+    saveLocalProgress(save)
+  }
 }
 
 let syncTimeout: ReturnType<typeof setTimeout> | null = null

@@ -49,7 +49,7 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react'
-import { loadLocalSave, recordLevelCompletion, SavedGameData } from '@/lib/storage'
+import { loadLocalSave, persistStars, recordLevelCompletion, SavedGameData } from '@/lib/storage'
 import {
   ALL_BOSSES,
   ALL_ENEMIES,
@@ -2393,6 +2393,7 @@ export default function Home() {
     /* go back to the menu (lets you switch between kids & grown-ups mode) */
     const toMenu = () => {
       audio.click()
+      persistStars(g.score)
       g.state = 'menu'
       g.monsters.length = 0
       g.shots.length = 0
@@ -2534,6 +2535,7 @@ export default function Home() {
       burst(g, m.x, m.y, m.color)
       fireworks(g)
       g.score += b.bonus
+      persistStars(g.score)
       addText(g, m.x, m.y - 46, `+${b.bonus} ⭐ BONUS!`, '#e8a800', 24)
       audio.bossDown()
       completeLevel()
@@ -2542,6 +2544,7 @@ export default function Home() {
     /* ⭐ a bonus star was caught — sparkle & score! */
     const collectStar = (st: StarDrop) => {
       g.score += PU.starValue
+      persistStars(g.score)
       audio.pop()
       addText(g, st.x, st.y - 8, `+${PU.starValue}⭐`, '#e8a800', 17)
       for (let k = 0; k < 6; k++) {
