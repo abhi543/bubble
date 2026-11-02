@@ -645,19 +645,19 @@ export function generateLevels(mode: 'kids' | 'adults'): LevelConfig[] {
       : Math.round(rawGoal * (isAdults ? 1.15 : 0.9))
 
     // 2. Fall speed progression (sigmoidal scaling)
-    const baseFall = isAdults ? 85 : 45
-    const maxFallCeil = isAdults ? 250 : 135
+    const baseFall = isAdults ? 55 : 38
+    const maxFallCeil = isAdults ? 160 : 110
     const vMult = 1.0 + 1.4 / (1 + Math.exp(-0.045 * (levelNumber - 55)))
     const fallSpeed = Math.round(baseFall * vMult)
     const fallSpeedMax = Math.min(maxFallCeil, Math.round(fallSpeed * 1.55))
 
     // 3. Spawn cadence: S_delay(L, 0) scaling down
-    const spawnEvery = Math.max(0.65, Number(( (isAdults ? 1.6 : 2.3) - 0.0095 * levelNumber ).toFixed(2)))
-    const spawnEveryMin = Math.max(0.42, Number(( spawnEvery * 0.65 ).toFixed(2)))
+    const spawnEvery = Math.max(0.95, Number(( (isAdults ? 2.4 : 2.8) - 0.0095 * levelNumber ).toFixed(2)))
+    const spawnEveryMin = Math.max(0.60, Number(( spawnEvery * 0.70 ).toFixed(2)))
 
     // 4. Drift wiggle & on-screen enemy counts
     const drift = Math.round(20 + 0.45 * levelNumber)
-    const maxOnScreen = Math.min(isAdults ? 12 : 8, Math.round(4 + levelNumber * 0.055))
+    const maxOnScreen = Math.min(isAdults ? 6 : 5, Math.round(3 + levelNumber * 0.035))
 
     const world = WORLDS[worldId]
     const name = isBossLevel

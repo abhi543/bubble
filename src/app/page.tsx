@@ -133,10 +133,10 @@ const MODES: Record<Mode, ModeConfig> = {
   adults: {
     label: 'GROWN-UPS MODE',
     emoji: '🧑‍🚀',
-    blurb: 'fast & tricky · 3 hearts · 120 grand campaign levels',
+    blurb: 'tactical shooter · 3 hearts · 120 grand campaign levels',
     hearts: 3,
-    monsterRadius: [15, 22],
-    shootCooldown: 0.26,
+    monsterRadius: [16, 24],
+    shootCooldown: 0.42,
     fastMusic: true,
     levels: generateLevels('adults'),
   },
