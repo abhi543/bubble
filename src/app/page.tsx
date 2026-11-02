@@ -334,7 +334,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)]
 
 /* ───────────────────────────── game types ───────────────────────────── */
-type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'playing' | 'levelClear' | 'over' | 'won' | 'bye'
+type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'levelSelect' | 'playing' | 'levelClear' | 'over' | 'won' | 'bye'
 
 interface Monster {
   x: number
@@ -2113,7 +2113,9 @@ export default function Home() {
   const gRef = useRef<GameData | null>(null)
   const audioRef = useRef<GameAudio | null>(null)
   const controlsRef = useRef<{
-    startGame: () => void
+    startGame: (chosenLevel?: number) => void
+    startLevel: (levelIndex: number) => void
+    openLevelSelect: () => void
     showModes: () => void
     pickMode: (mode: Mode) => void
     backToModes: () => void
@@ -2149,11 +2151,18 @@ export default function Home() {
   const [friend, setFriend] = useState<IntroInfo | null>(null) // "Meet a new friend!" pop-up
   const [lastMode, setLastMode] = useState<Mode | null>(null) // ⭐ chip on the mode you played last time
   const [pal, setPal] = useState<CharacterId>('rocky') // pal highlighted on the selection screen
+  const [selectedWorld, setSelectedWorld] = useState<number>(1) // active world on the 120-level select map
+  const [saveData, setSaveData] = useState<SavedGameData | null>(null)
 
-  // remember which mode & pal you chose last visit (purely cosmetic highlights)
+  // remember which mode & pal you chose last visit and hydrate save data
   useEffect(() => {
     const id = setTimeout(() => {
       try {
+        const save = loadLocalSave()
+        setSaveData(save)
+        const currentMode = save.mode || 'kids'
+        const highestLvl = currentMode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
+        setSelectedWorld(Math.floor(highestLvl / 10) + 1)
         const saved = localStorage.getItem('bubblePopMode')
         if (saved === 'kids' || saved === 'adults') setLastMode(saved)
         const savedPal = localStorage.getItem('bubblePopCharacter')
@@ -2174,6 +2183,14 @@ export default function Home() {
 
     const g = freshGame()
     gRef.current = g
+    // Immediate hydration sync so HUD matches stored progress right away
+    setTimeout(() => {
+      try {
+        const s = loadLocalSave()
+        setSaveData(s)
+        syncHud()
+      } catch {}
+    }, 0)
     // Debug handle for curious grown-ups: open the browser console and type
     // __bubbleGame to peek at (or tweak!) the live game state.
     if (typeof window !== 'undefined') (window as unknown as { __bubbleGame: GameData }).__bubbleGame = g
@@ -2268,11 +2285,14 @@ export default function Home() {
         const resumeL = m === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
         g.level = clamp(resumeL, 0, 119)
         saveLocalProgress(save)
+        setSaveData(save)
+        setSelectedWorld(Math.floor(g.level / 10) + 1)
       } catch {
         /* private browsing — no problem */
       }
       g.state = 'charSelect'
       setUi('charSelect')
+      syncHud()
     }
 
     /* change your mind — back to the mode screen */
@@ -2295,13 +2315,15 @@ export default function Home() {
       }
     }
 
-    /* LET'S GO! → Resume at your highest unlocked level with your pal! */
-    const startGame = () => {
+    /* LET'S GO! → Resume at your highest unlocked level (or chosen level) with your pal! */
+    const startGame = (chosenLevel?: number) => {
       audio.init()
       audio.click()
       const save = loadLocalSave()
-      const resumeLevel = g.mode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
-      g.level = clamp(resumeLevel, 0, 119)
+      setSaveData(save)
+      const highest = g.mode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
+      const targetLvl = chosenLevel !== undefined ? chosenLevel : highest
+      g.level = clamp(targetLvl, 0, 119)
       g.score = save.totalStars || 0
       g.hearts = MODES[g.mode].hearts
       g.seen = {} // every new playthrough re-introduces the friends 👋
@@ -2309,6 +2331,23 @@ export default function Home() {
       g.active = null
       g.shield = false
       beginLevel()
+    }
+
+    /* Start any specific level directly from the 120-level select map */
+    const startLevel = (levelIndex: number) => {
+      startGame(levelIndex)
+    }
+
+    /* Open the interactive 12-World / 120-Level selection map */
+    const openLevelSelect = () => {
+      audio.init()
+      audio.click()
+      const save = loadLocalSave()
+      setSaveData(save)
+      const currentHighest = g.mode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
+      setSelectedWorld(Math.floor(currentHighest / 10) + 1)
+      g.state = 'levelSelect'
+      setUi('levelSelect')
     }
 
     const next = () => {
@@ -2372,7 +2411,8 @@ export default function Home() {
       const earned = g.hearts >= maxHearts ? 3 : g.hearts >= Math.ceil(maxHearts / 2) ? 2 : 1
       setStars(earned)
       try {
-        recordLevelCompletion(g.mode, g.level, earned, g.score, g.monsters.some((mm) => mm.boss >= 0))
+        const updatedSave = recordLevelCompletion(g.mode, g.level, earned, g.score, g.monsters.some((mm) => mm.boss >= 0))
+        setSaveData(updatedSave)
       } catch {}
       if (g.level >= levelsOf(g.mode).length - 1) {
         bigCelebration(g)
@@ -3153,7 +3193,7 @@ export default function Home() {
       setMuted(audio.muted)
       audio.click()
     }
-    controlsRef.current = { startGame, showModes, pickMode, backToModes, selectCharacter, next, toggleMute, toMenu, bye }
+    controlsRef.current = { startGame, startLevel, openLevelSelect, showModes, pickMode, backToModes, selectCharacter, next, toggleMute, toMenu, bye }
 
     /* ── go! ── */
     let raf = 0
@@ -3355,17 +3395,235 @@ export default function Home() {
               </div>
               <p className="mt-2 text-xs font-bold text-gray-400">On a tablet? Drag to move, tap to pop!</p>
 
-              {/* ── the one & only START button! (mode picking comes next) ── */}
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur()
-                  controlsRef.current?.showModes()
-                }}
-                className="mt-6 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-amber-400 text-2xl font-extrabold text-white shadow-lg shadow-amber-200 transition hover:bg-amber-500 active:scale-95"
-              >
-                <Play size={30} aria-hidden /> START GAME
-              </button>
-              <p className="mt-3 text-sm font-bold text-gray-400">Kids &amp; grown-ups · 3 bubbly levels each! 🫧</p>
+              {/* ── RESUME LEVEL / PLAY BUTTONS ── */}
+              <div className="mt-6 flex flex-col gap-2.5">
+                {/* Primary RESUME button if saved level or progress exists */}
+                {hud.level > 0 ? (
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
+                      controlsRef.current?.startGame()
+                    }}
+                    className="flex h-16 w-full items-center justify-center gap-3 rounded-full bg-emerald-500 text-xl font-extrabold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-600 active:scale-95"
+                  >
+                    <Play size={26} aria-hidden />
+                    <span className="flex flex-col items-start leading-tight">
+                      <span>RESUME LEVEL {hud.level + 1}</span>
+                      <span className="text-xs font-semibold text-emerald-100">
+                        {MODES[hud.mode].levels[hud.level]?.name || `World ${Math.floor(hud.level / 10) + 1}`} · {hud.mode === 'kids' ? 'Kids' : 'Grown-Ups'}
+                      </span>
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
+                      controlsRef.current?.showModes()
+                    }}
+                    className="flex h-16 w-full items-center justify-center gap-3 rounded-full bg-amber-400 text-2xl font-extrabold text-white shadow-lg shadow-amber-200 transition hover:bg-amber-500 active:scale-95"
+                  >
+                    <Play size={30} aria-hidden /> START GAME
+                  </button>
+                )}
+
+                {/* Level Select button */}
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur()
+                    controlsRef.current?.openLevelSelect()
+                  }}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-amber-300 bg-amber-50 text-base font-extrabold text-amber-800 shadow-sm transition hover:bg-amber-100 active:scale-95"
+                >
+                  <span className="text-lg" aria-hidden>🗺️</span>
+                  <span>SELECT LEVEL (1–120)</span>
+                </button>
+
+                {/* Switch Mode / Pal / New Adventure button */}
+                {hud.level > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
+                      controlsRef.current?.showModes()
+                    }}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-slate-100 text-sm font-bold text-slate-700 transition hover:bg-slate-200 active:scale-95"
+                  >
+                    <span>🧒 / 🧑‍🚀 Switch Mode or Character</span>
+                  </button>
+                )}
+              </div>
+              <p className="mt-3 text-xs font-bold text-gray-400">12 Magical Worlds · 120 Bubbly Levels · Auto-Saved 🫧</p>
+            </div>
+          </div>
+        )}
+
+        
+        {/* ════════ OVERLAY: 120-LEVEL & 12-WORLD SELECT MAP ════════ */}
+        {ui === 'levelSelect' && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/60 p-3 backdrop-blur-[2px]">
+            <div className="pop-in my-auto flex max-h-[95vh] w-full max-w-lg flex-col rounded-3xl border-4 border-amber-200 bg-white p-4 shadow-2xl sm:p-6">
+              {/* Header with Mode indicator */}
+              <div className="flex items-center justify-between border-b border-amber-100 pb-3">
+                <button
+                  onClick={() => controlsRef.current?.toMenu()}
+                  className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200 active:scale-95"
+                >
+                  ← Menu
+                </button>
+                <div className="text-center">
+                  <h2 className="text-xl font-extrabold text-pink-500 sm:text-2xl">World Map</h2>
+                  <div className="text-xs font-bold text-gray-400">
+                    Mode: <span className="font-extrabold text-amber-600">{hud.mode === 'kids' ? 'Kids 🧒' : 'Grown-Ups 🧑‍🚀'}</span> · ⭐ {hud.score} stars
+                  </div>
+                </div>
+                <button
+                  onClick={() => controlsRef.current?.showModes()}
+                  className="rounded-full bg-pink-100 px-3 py-1.5 text-xs font-extrabold text-pink-700 transition hover:bg-pink-200 active:scale-95"
+                >
+                  Change Mode
+                </button>
+              </div>
+
+              {/* World Carousel Navigation */}
+              {(() => {
+                const wId = (selectedWorld as 1|2|3|4|5|6|7|8|9|10|11|12)
+                const wCfg = WORLDS[wId] || WORLDS[1]
+                const curSave = saveData || loadLocalSave()
+                const highestLevel = hud.mode === 'kids' ? curSave.kidsHighestLevel : curSave.adultsHighestLevel
+                const recordMap = hud.mode === 'kids' ? curSave.kidsLevelsRecord : curSave.adultsLevelsRecord
+                const worldUnlocked = (wId - 1) * 10 <= highestLevel
+
+                return (
+                  <div className="flex flex-1 flex-col overflow-y-auto pt-3">
+                    {/* World Banner Card */}
+                    <div
+                      className="relative flex items-center justify-between rounded-2xl p-3.5 shadow-sm"
+                      style={{
+                        background: `linear-gradient(135deg, ${wCfg.skyTop}, ${wCfg.skyBottom})`,
+                      }}
+                    >
+                      <button
+                        onClick={() => setSelectedWorld((prev) => (prev > 1 ? prev - 1 : 12))}
+                        aria-label="Previous World"
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-xl font-black text-slate-700 shadow transition hover:bg-white active:scale-90"
+                      >
+                        ‹
+                      </button>
+
+                      <div className="flex flex-col items-center text-center">
+                        <span className="text-3xl floaty" aria-hidden>{wCfg.emoji}</span>
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-600">
+                          World {wCfg.id} of 12
+                        </span>
+                        <h3 className="text-lg font-black text-slate-800 sm:text-xl">
+                          {wCfg.name}
+                        </h3>
+                        <span className="text-[11px] font-bold text-slate-600">
+                          {wCfg.subtitle}
+                        </span>
+                        <span className="mt-1 inline-flex items-center rounded-full bg-white/90 px-2.5 py-0.5 text-[10px] font-extrabold text-slate-700 shadow-sm">
+                          ✨ {wCfg.gimmickName}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => setSelectedWorld((prev) => (prev < 12 ? prev + 1 : 1))}
+                        aria-label="Next World"
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-xl font-black text-slate-700 shadow transition hover:bg-white active:scale-90"
+                      >
+                        ›
+                      </button>
+                    </div>
+
+                    {/* 10-Level Grid for the selected world */}
+                    <div className="mt-4 grid grid-cols-5 gap-2.5 sm:gap-3">
+                      {Array.from({ length: 10 }, (_, i) => {
+                        const levelIndex = (wId - 1) * 10 + i
+                        const levelNumber = levelIndex + 1
+                        const isUnlocked = levelIndex <= highestLevel
+                        const isCurrent = levelIndex === hud.level
+                        const isBoss = i === 9
+                        const rec = recordMap[levelIndex]
+                        const earnedStars = rec?.stars || 0
+                        const lvlName = MODES[hud.mode].levels[levelIndex]?.name || `Level ${levelNumber}`
+
+                        return (
+                          <button
+                            key={levelIndex}
+                            disabled={!isUnlocked}
+                            onClick={() => {
+                              if (isUnlocked) {
+                                controlsRef.current?.startLevel(levelIndex)
+                              }
+                            }}
+                            className={`relative flex flex-col items-center justify-center rounded-2xl p-2 transition ${
+                              isUnlocked
+                                ? isCurrent
+                                  ? 'border-3 border-emerald-400 bg-emerald-50 shadow-md ring-2 ring-emerald-300 active:scale-95'
+                                  : 'border-2 border-amber-200 bg-amber-50/70 hover:border-amber-400 hover:bg-amber-100/60 shadow-sm active:scale-95'
+                                : 'cursor-not-allowed border-2 border-gray-200 bg-gray-100 opacity-50'
+                            }`}
+                          >
+                            {/* Level Number or Lock Icon */}
+                            <span className="text-base font-black text-slate-700">
+                              {isUnlocked ? levelNumber : '🔒'}
+                            </span>
+
+                            {/* Boss Crown or Target indicator */}
+                            {isBoss ? (
+                              <span className="text-xs" title="Boss Level">👑</span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400">
+                                {isUnlocked ? (isCurrent ? 'Play' : 'Go') : 'Lock'}
+                              </span>
+                            )}
+
+                            {/* Star rating dots */}
+                            {isUnlocked && (
+                              <div className="mt-1 flex items-center gap-0.5">
+                                {[1, 2, 3].map((s) => (
+                                  <span
+                                    key={s}
+                                    className={`text-[9px] ${
+                                      s <= earnedStars ? 'text-amber-400' : 'text-gray-300'
+                                    }`}
+                                  >
+                                    ★
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {isCurrent && (
+                              <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white shadow">
+                                ✓
+                              </span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {/* Quick jump to Highest Unlocked Level */}
+                    <div className="mt-5 flex flex-col gap-2">
+                      <button
+                        onClick={() => {
+                          controlsRef.current?.startLevel(highestLevel)
+                        }}
+                        className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-emerald-500 text-base font-black text-white shadow-md shadow-emerald-200 transition hover:bg-emerald-600 active:scale-95"
+                      >
+                        <Play size={20} aria-hidden /> JUMP TO LEVEL {highestLevel + 1}
+                      </button>
+
+                      <div className="flex items-center justify-between text-xs font-bold text-gray-400 px-1">
+                        <span>Recovery Code:</span>
+                        <span className="font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                          {curSave.profile.recoveryCode}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         )}
@@ -3471,15 +3729,27 @@ export default function Home() {
               >
                 <Play size={30} aria-hidden /> LET&rsquo;S GO!
               </button>
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur()
-                  controlsRef.current?.backToModes()
-                }}
-                className="mt-2 w-full rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
-              >
-                go back
-              </button>
+              <div className="mt-2 flex items-center justify-center gap-4">
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur()
+                    controlsRef.current?.openLevelSelect()
+                  }}
+                  className="rounded-full py-2 text-sm font-extrabold text-amber-700 underline underline-offset-2 transition hover:text-amber-800"
+                >
+                  🗺️ Choose Level
+                </button>
+                <span className="text-gray-300">·</span>
+                <button
+                  onClick={(e) => {
+                    e.currentTarget.blur()
+                    controlsRef.current?.backToModes()
+                  }}
+                  className="rounded-full py-2 text-sm font-bold text-gray-400 underline underline-offset-2 transition hover:text-pink-500"
+                >
+                  go back
+                </button>
+              </div>
             </div>
           </div>
         )}
