@@ -1607,7 +1607,7 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
     ctx.lineWidth = 1.5
     roundRectPath(ctx, -r * 0.11, r * 0.32, r * 0.22, r * 0.16, 2)
     ctx.stroke()
-  } else {
+  } else if (b.key === 'blobby') {
     /* 👑 KING BLOBBY — the biggest green blob of all, wearing a paper crown */
     ctx.beginPath()
     ctx.ellipse(0, 0, r, r * 0.95, 0, 0, Math.PI * 2)
