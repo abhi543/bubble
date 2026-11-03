@@ -82,6 +82,8 @@ export function generateChildPseudonym(): string {
 
 const STORAGE_KEY = 'bubble_pop_save_v2'
 
+let cachedSave: SavedGameData | null = null
+
 /**
  * Get initial default save structure
  */
@@ -132,40 +134,49 @@ export function createDefaultSave(): SavedGameData {
  * Load saved progress with zero latency from LocalStorage
  */
 export function loadLocalSave(): SavedGameData {
+  if (cachedSave) return cachedSave
   if (typeof window === 'undefined') return createDefaultSave()
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) {
       const fresh = createDefaultSave()
+      cachedSave = fresh
       saveLocalProgress(fresh)
       return fresh
     }
     const parsed = JSON.parse(raw) as SavedGameData
-    // Ensure all critical structures exist
     if (!parsed.profile || !parsed.profile.recoveryCode) {
       const fresh = createDefaultSave()
+      cachedSave = fresh
       saveLocalProgress(fresh)
       return fresh
     }
+    cachedSave = parsed
     return parsed
   } catch (err) {
-    return createDefaultSave()
+    const fallback = createDefaultSave()
+    cachedSave = fallback
+    return fallback
   }
 }
 
 /**
  * Synchronous write to local storage (sub-millisecond latency)
  */
+let persistTimer: ReturnType<typeof setTimeout> | null = null
+
 export function saveLocalProgress(data: SavedGameData): void {
+  cachedSave = data
   if (typeof window === 'undefined') return
-  try {
-    data.profile.lastSyncAt = Date.now()
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
-    // Also dispatch background cloud sync if online
-    dispatchSilentCloudSync(data)
-  } catch {
-    /* Safe fallback in private browsing */
-  }
+  // Debounce writes to disk to prevent I/O blocking during high-action popping
+  if (persistTimer) clearTimeout(persistTimer)
+  persistTimer = setTimeout(() => {
+    try {
+      data.profile.lastSyncAt = Date.now()
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      dispatchSilentCloudSync(data)
+    } catch {}
+  }, 120)
 }
 
 /**
