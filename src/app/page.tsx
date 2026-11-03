@@ -625,6 +625,7 @@ interface GameData {
   puSpawnT: number // countdown until the next power-up gift appears
   seenPower: Partial<Record<PowerUpType, boolean>> // first-time gift pop-ups
   et: number // "enemy time" — crawls at half speed during Slow Motion 🐌
+  nextMonsterId: number
 }
 
 function freshGame(): GameData {
@@ -689,6 +690,7 @@ function freshGame(): GameData {
     puSpawnT: 7,
     seenPower: {},
     et: 0,
+    nextMonsterId: 1,
   }
 }
 
@@ -3577,6 +3579,7 @@ export default function Home() {
       }
 
       /* 🌟 ENEMY STARS MOVEMENT & PLAYER DAMAGE */
+      const palY = g.h - 96 // the player pal hover height
       for (let i = g.enemyStars.length - 1; i >= 0; i--) {
         const es = g.enemyStars[i]
         es.y += es.vy * slowF * dt
