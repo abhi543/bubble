@@ -960,10 +960,16 @@ class GameAudio {
   private scheduleMusic() {
     if (!this.ctx) return
     const STEP = this.stepDur // one 8th-note at the current tempo
-    while (this.nextTime < this.ctx.currentTime + 0.4) {
+    // Resynchronize nextTime if the tab was suspended, blurred, or drifted behind
+    if (this.nextTime < this.ctx.currentTime - 0.5) {
+      this.nextTime = this.ctx.currentTime + 0.05
+    }
+    let safetyCounter = 0
+    while (this.nextTime < this.ctx.currentTime + 0.4 && safetyCounter < 16) {
       this.playMusicStep(this.step, this.nextTime)
       this.step = (this.step + 1) % 32
       this.nextTime += STEP
+      safetyCounter++
     }
   }
 
