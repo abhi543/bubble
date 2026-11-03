@@ -50,8 +50,6 @@ import {
   VolumeX,
   HelpCircle,
   Mail,
-  MessageSquare,
-  ExternalLink,
   X,
 } from 'lucide-react'
 import { loadLocalSave, persistStars, recordLevelCompletion, saveLocalProgress, SavedGameData } from '@/lib/storage'
@@ -5415,24 +5413,6 @@ export default function Home() {
                 </div>
               </a>
 
-              {/* GitHub Issues link */}
-              <a
-                href="https://github.com/abhi543/bubble/issues/new"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3.5 rounded-2xl border-2 border-amber-200 bg-white p-3.5 shadow-sm transition hover:border-amber-400 hover:shadow-md"
-              >
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-700">
-                  <MessageSquare size={22} />
-                </div>
-                <div className="flex-1 text-left">
-                  <div className="flex items-center gap-1 text-sm font-extrabold text-purple-950">
-                    <span>Report on GitHub</span>
-                    <ExternalLink size={14} className="text-purple-600" />
-                  </div>
-                  <div className="text-xs font-semibold text-purple-700">Open a bug ticket or request</div>
-                </div>
-              </a>
             </div>
 
             <div className="mt-4 rounded-xl bg-amber-100/80 p-3 text-center text-xs font-bold text-amber-900">
