@@ -501,6 +501,7 @@ interface Monster {
   spin: number // 'spinny' rotation angle
   settled: boolean // boss: has it reached its comfy hover spot yet?
   targetY: number // boss: the height it hovers at
+  shootT?: number // countdown to firing an enemy star
 }
 
 interface Shot {
@@ -549,6 +550,17 @@ interface PowerUpDrop {
   type: PowerUpType // which gift it is
   phase: number // sway wiggle offset
   alpha: number // fades out gently at the bottom
+}
+
+/* 🌟 an enemy star projectile falling down toward the player */
+interface EnemyStar {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  rot: number
+  vr: number
+  color: string
 }
 
 /* ⭐ a tiny bonus star that tumbles out of a popped friend */
@@ -616,6 +628,7 @@ interface GameData {
   introBusy: boolean // is a pop-up on screen right now?
   powerups: PowerUpDrop[] // gift bubbles floating down 🎁
   starDrops: StarDrop[] // little bonus stars tumbling from popped friends ⭐
+  enemyStars: EnemyStar[] // 🌟 falling star attacks from enemies!
   active: ActivePower | null // the one timed power-up running right now
   shield: boolean // Bubble Shield ready? (blocks one hit 🫧)
   puSpawnT: number // countdown until the next power-up gift appears
@@ -671,6 +684,7 @@ function freshGame(): GameData {
     introBusy: false,
     powerups: [],
     starDrops: [],
+    enemyStars: [],
     active: null,
     shield: false,
     puSpawnT: 7,
@@ -2269,6 +2283,23 @@ function drawPowerUp(ctx: CanvasRenderingContext2D, u: PowerUpDrop, time: number
 }
 
 /* ⭐ a tiny bonus star tumbling down — catch it for extra stars! */
+/* 🌟 an enemy star projectile - red/crimson glowing hazard! */
+function drawEnemyStar(ctx: CanvasRenderingContext2D, es: EnemyStar) {
+  ctx.save()
+  // Outer pulsing danger glow
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.35)'
+  circle(ctx, es.x, es.y, 16)
+  // Bright sharp hazard star
+  starPath(ctx, es.x, es.y, 13, 5.2, 5, es.rot)
+  ctx.fillStyle = es.color || '#ef4444'
+  ctx.fill()
+  ctx.strokeStyle = '#fee2e2'
+  ctx.lineWidth = 2
+  ctx.lineJoin = 'round'
+  ctx.stroke()
+  ctx.restore()
+}
+
 function drawStarDrop(ctx: CanvasRenderingContext2D, st: StarDrop) {
   ctx.save()
   ctx.globalAlpha = clamp(st.alpha, 0, 1)
@@ -2480,6 +2511,7 @@ function drawAimArrow(ctx: CanvasRenderingContext2D, g: GameData) {
 function render(ctx: CanvasRenderingContext2D, g: GameData) {
   drawBackground(ctx, g)
   for (const st of g.starDrops) drawStarDrop(ctx, st)
+  for (const es of g.enemyStars) drawEnemyStar(ctx, es)
   for (const m of g.monsters) drawEnemy(ctx, m, g.time)
   for (const u of g.powerups) drawPowerUp(ctx, u, g.time)
   for (const s of g.shots) drawShot(ctx, s, g.time)
@@ -2787,6 +2819,7 @@ export default function Home() {
       g.bossSpawned = false // every level gets its own big pal at the end!
       g.powerups.length = 0 // fresh sky, fresh gifts!
       g.starDrops.length = 0
+      g.enemyStars.length = 0
       g.puSpawnT = g.level === 0 ? rand(5, 9) : rand(8, 13) // first gift comes soon
       g.introQueue.length = 0 // drop any pop-ups that are still waiting
       g.player.x = g.w / 2
@@ -2945,6 +2978,7 @@ export default function Home() {
       g.shots.length = 0
       g.powerups.length = 0
       g.starDrops.length = 0
+      g.enemyStars.length = 0
       g.active = null
       g.shield = false
       audio.stopMusic()
@@ -2967,6 +3001,7 @@ export default function Home() {
       g.shots.length = 0
       g.powerups.length = 0
       g.starDrops.length = 0
+      g.enemyStars.length = 0
       g.active = null
       g.shield = false
       g.state = 'bye'
@@ -3277,6 +3312,7 @@ export default function Home() {
         spin: rand(0, Math.PI * 2),
         settled: false,
         targetY: 0,
+        shootT: rand(2.5, 6.0),
       })
       // first time this friend ever appears? roll out the welcome banner!
       if (!g.seen[type]) {
@@ -3501,6 +3537,132 @@ export default function Home() {
             loseHeart(m)
           }
           if (g.state !== 'playing') return
+        }
+      }
+
+      /* 🌟 ENEMY STAR ATTACKS: Enemies fire stars down at player! */
+      for (const m of g.monsters) {
+        if (m.y < 30 || m.y > g.h - 140) continue
+        if (m.shootT === undefined) m.shootT = rand(2.5, 6.0)
+        m.shootT -= dt * slowF
+        if (m.shootT <= 0) {
+          const isBoss = m.boss >= 0
+          // Reset timer: bosses fire stars faster, advanced mode fires faster
+          m.shootT = isBoss
+            ? rand(1.6, 3.2)
+            : g.mode === 'advanced'
+            ? rand(2.0, 4.5)
+            : g.mode === 'adults'
+            ? rand(3.0, 6.0)
+            : rand(4.5, 8.0) // kids mode: gentle & rare
+
+          // Aim star slightly toward player
+          const dxToPlayer = p.x - m.x
+          const aimFactor = clamp(dxToPlayer * 0.45, -80, 80)
+          const starVy = rand(150, 220) * (g.mode === 'advanced' ? 1.25 : 1)
+
+          g.enemyStars.push({
+            x: m.x,
+            y: m.y + m.r + 6,
+            vx: aimFactor,
+            vy: starVy,
+            rot: rand(0, Math.PI * 2),
+            vr: rand(3, 7) * (Math.random() < 0.5 ? -1 : 1),
+            color: isBoss ? '#f43f5e' : '#fb7185',
+          })
+
+          // Small spark muzzle burst
+          for (let k = 0; k < 4; k++) {
+            g.parts.push({
+              x: m.x, y: m.y + m.r,
+              vx: rand(-40, 40), vy: rand(20, 70),
+              life: 0.25, maxLife: 0.25,
+              color: '#f43f5e', size: 3, rot: 0, vr: 0, kind: 'sparkle'
+            })
+          }
+        }
+      }
+
+      /* 🌟 ENEMY STARS MOVEMENT & COLLISION: Damaging the Player! */
+      for (let i = g.enemyStars.length - 1; i >= 0; i--) {
+        const es = g.enemyStars[i]
+        es.y += es.vy * slowF * dt
+        es.x += es.vx * slowF * dt
+        es.rot += es.vr * dt
+
+        // Check if player shot bubbles pop the enemy star out of the sky
+        let poppedByShot = false
+        for (let si = g.shots.length - 1; si >= 0; si--) {
+          const s = g.shots[si]
+          const dsx = s.x - es.x
+          const dsy = s.y - es.y
+          if (dsx * dsx + dsy * dsy < (s.r + 14) * (s.r + 14)) {
+            poppedByShot = true
+            g.shots.splice(si, 1)
+            break
+          }
+        }
+        if (poppedByShot) {
+          g.enemyStars.splice(i, 1)
+          burst(g, es.x, es.y, '#f43f5e')
+          audio.pop()
+          continue
+        }
+
+        // Check collision with the player character
+        const dx = p.x - es.x
+        const dy = (palY - 14) - es.y
+        const hitRadius = 38
+        if (dx * dx + dy * dy < hitRadius * hitRadius) {
+          g.enemyStars.splice(i, 1)
+          if (g.shield) {
+            // Shield absorbs the star attack!
+            g.shield = false
+            audio.shieldPop()
+            addText(g, p.x, g.h - 140, 'Shield blocked Star!', '#38bdf8', 22)
+            for (let k = 0; k < 12; k++) {
+              g.parts.push({
+                x: p.x, y: palY - 14,
+                vx: rand(-140, 140), vy: rand(-160, 40),
+                life: 0.5, maxLife: 0.5,
+                color: '#38bdf8', size: 4, rot: 0, vr: 0, kind: 'sparkle'
+              })
+            }
+          } else {
+            // Player loses a heart from enemy star attack!
+            g.hearts--
+            g.player.surprised = 1.4
+            setHurtKey((k) => k + 1)
+            audio.oops()
+            addText(g, p.x, g.h - 150, 'Star Hit! 💔', '#f43f5e', 24)
+            for (let k = 0; k < 15; k++) {
+              g.parts.push({
+                x: p.x, y: palY - 14,
+                vx: rand(-120, 120), vy: rand(-140, 40),
+                life: 0.6, maxLife: 0.6,
+                color: '#f43f5e', size: 5, rot: 0, vr: rand(-4, 4), kind: 'confetti'
+              })
+            }
+            if (g.hearts <= 0) {
+              if (g.mode === 'kids') {
+                g.hearts = MODES.kids.hearts
+                audio.giantPop()
+                addText(g, g.w / 2, g.h * 0.5, '🫧 BUBBLE RESCUE! 🌟', '#ffd93d', 26)
+              } else {
+                g.state = 'over'
+                setUi('over')
+                audio.stopMusic()
+                audio.gameOverJingle()
+              }
+            }
+          }
+          syncHud()
+          continue
+        }
+
+        // Remove star if past bottom of the screen
+        if (es.y > g.h + 30 || es.x < -40 || es.x > g.w + 40) {
+          g.enemyStars.splice(i, 1)
         }
       }
 
