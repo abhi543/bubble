@@ -767,7 +767,14 @@ class GameAudio {
     osc.connect(gain)
     gain.connect(dest)
     osc.start(t)
-    osc.stop(t + dur + 0.05)
+    const stopTime = t + dur + 0.05
+    osc.stop(stopTime)
+    osc.onended = () => {
+      try {
+        osc.disconnect()
+        gain.disconnect()
+      } catch {}
+    }
   }
 
   /* ── SOUND EFFECTS ────────────────────────────────────────────────── */
@@ -4142,14 +4149,19 @@ export default function Home() {
     let raf = 0
     let last = performance.now()
     const loop = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000) // clamp dt so pauses never cause jumps
+      const rawDt = (now - last) / 1000
       last = now
-      if (g.state === 'paused') {
-        // while paused, render frozen scene and skip simulation updates
-        render(ctx, g)
-      } else {
-        update(dt)
-        render(ctx, g)
+      // Ignore huge delta spikes (e.g. background tab or system pause)
+      const dt = Math.min(0.05, Math.max(0.001, rawDt))
+      try {
+        if (g.state === 'paused') {
+          render(ctx, g)
+        } else {
+          update(dt)
+          render(ctx, g)
+        }
+      } catch (err) {
+        console.error('Frame update error caught:', err)
       }
       raf = requestAnimationFrame(loop)
     }
