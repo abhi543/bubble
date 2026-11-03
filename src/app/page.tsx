@@ -466,6 +466,7 @@ export const COSMETICS: CosmeticDef[] = [
 type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'levelSelect' | 'playing' | 'paused' | 'levelClear' | 'over' | 'won' | 'bye' | 'bazaar'
 
 interface Monster {
+  id: number // unique monster instance id
   x: number
   y: number
   baseX: number
@@ -3246,6 +3247,7 @@ export default function Home() {
         if (Math.abs(baseX - g.player.x) > 130) break
       }
       g.monsters.push({
+        id: g.nextMonsterId++,
         x: cfg.move === 'drift' ? (Math.random() < 0.5 ? -r : g.w + r) : baseX,
         baseX,
         y: -r - 12,
@@ -3289,6 +3291,7 @@ export default function Home() {
       const hp = bossHpOf(g, b)
       const lvlColors = getLevelColors(g.level)
       g.monsters.push({
+        id: g.nextMonsterId++,
         x: g.w / 2,
         y: -r - 20,
         baseX: g.w / 2,
@@ -3654,11 +3657,11 @@ export default function Home() {
           const radiusTolerance = g.mode === 'kids' ? 1.35 : 1.05
           const rr = (m.r + s.r) * radiusTolerance
           if (dx * dx + dy * dy < rr * rr) {
-            // Pierce check for Rocky / Panda
+            // Pierce check for Rocky / Panda (tracked by monster instance ID)
             if (s.pierce && s.pierce > 1) {
               if (!s.hitIds) s.hitIds = []
-              if (s.hitIds.includes(j)) continue
-              s.hitIds.push(j)
+              if (s.hitIds.includes(m.id)) continue
+              s.hitIds.push(m.id)
               s.pierce--
             } else {
               g.shots.splice(i, 1)

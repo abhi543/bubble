@@ -1,18 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// In-memory persistent cache for quick zero-friction guest sessions across devices
+// In-memory persistent cache with LRU size limit to prevent memory bloat/DoS
 const memoryStore = new Map<string, any>()
+const MAX_MEMORY_KEYS = 5000
 
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json()
-    if (!payload || !payload.profile || !payload.profile.recoveryCode) {
+    const raw = await req.text()
+    // Enforce 100KB payload limit for player save data
+    if (raw.length > 100 * 1024) {
+      return NextResponse.json({ success: false, error: 'Payload too large' }, { status: 413 })
+    }
+    const payload = JSON.parse(raw)
+    if (!payload || !payload.profile || typeof payload.profile.recoveryCode !== 'string' || typeof payload.profile.id !== 'string') {
       return NextResponse.json({ success: false, error: 'Invalid payload' }, { status: 400 })
     }
 
-    const code = payload.profile.recoveryCode.toUpperCase().trim()
+    const code = payload.profile.recoveryCode.toUpperCase().trim().slice(0, 64)
+    const id = payload.profile.id.slice(0, 64)
+
+    // Evict oldest entries if map grows beyond limit
+    if (memoryStore.size >= MAX_MEMORY_KEYS) {
+      const firstKey = memoryStore.keys().next().value
+      if (firstKey) memoryStore.delete(firstKey)
+    }
+
     memoryStore.set(code, payload)
-    memoryStore.set(payload.profile.id, payload)
+    memoryStore.set(id, payload)
 
     return NextResponse.json({
       success: true,
