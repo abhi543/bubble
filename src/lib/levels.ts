@@ -628,7 +628,7 @@ export const ALL_BOSSES: BossConfig[] = [
 /* ═══════════════════════════════════════════════════════════════════════
    MATHEMATICAL LEVEL CURVES (Levels 1 to 120)
    ═══════════════════════════════════════════════════════════════════════ */
-export function generateLevels(mode: 'kids' | 'adults'): LevelConfig[] {
+export function generateLevels(mode?: any): LevelConfig[] {
   const levels: LevelConfig[] = []
   const isAdults = mode === 'adults'
 

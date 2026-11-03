@@ -159,7 +159,8 @@ const MODES: Record<Mode, ModeConfig> = {
 const ENEMIES: Record<EnemyType, EnemyConfig> = ALL_ENEMIES
 const BOSSES: BossConfig[] = ALL_BOSSES
 
-const levelsOf = (m: Mode): LevelConfig[] => (MODES[m] || MODES.kids).levels
+export const getModeConfig = (m?: any): ModeConfig => (m && MODES[m as Mode]) ? MODES[m as Mode] : MODES.kids
+const levelsOf = (m: Mode): LevelConfig[] => getModeConfig(m).levels
 const FONT = '"Comic Sans MS", "Chalkboard SE", "Comic Neue", system-ui, sans-serif'
 
 /* ───────────────────────────────────────────────────────────────────────
@@ -2673,7 +2674,7 @@ export default function Home() {
     const syncHud = () => {
       setHud((prev) => {
         const goal = goalOf(g)
-        const maxHearts = MODES[g.mode].hearts
+        const maxHearts = getModeConfig(g.mode).hearts
         const bossActive = g.monsters.some((m) => m.boss >= 0)
         const powerType = g.active?.type ?? null
         const powerStamp = g.active?.startedAt ?? 0
@@ -2789,7 +2790,7 @@ export default function Home() {
         }
       } else {
         // 🧒 KIDS MODE: Unchanged! Simple, friendly, straight shots
-        g.player.cool = MODES[g.mode].shootCooldown
+        g.player.cool = getModeConfig(g.mode).shootCooldown
         const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
         for (const offset of fan) {
           g.shots.push({
@@ -2831,7 +2832,7 @@ export default function Home() {
         g.shield = true
         addText(g, g.w / 2, g.h * 0.45, '🫧 BOOSTER: SHIELD READY!', '#38bdf8', 22)
       } else if (activeSave.activeBooster === 'heart') {
-        g.hearts = MODES[g.mode].hearts + 1
+        g.hearts = getModeConfig(g.mode).hearts + 1
         addText(g, g.w / 2, g.h * 0.45, '💗 BOOSTER: +1 EXTRA HEART!', '#f43f5e', 22)
       } else if (activeSave.activeBooster === 'magnet') {
         g.active = { type: 'magnet', t: 25, max: 25, startedAt: g.time }
@@ -2848,7 +2849,7 @@ export default function Home() {
       g.state = 'playing'
       setUi('playing')
       addText(g, g.w / 2, g.h * 0.35, `${levelsOf(g.mode)[g.level].name} — GO!`, '#ff8fb1')
-      audio.startMusic(MODES[g.mode].fastMusic)
+      audio.startMusic(getModeConfig(g.mode).fastMusic)
       syncHud()
     }
 
@@ -2904,7 +2905,7 @@ export default function Home() {
       const targetLvl = chosenLevel !== undefined ? chosenLevel : highest
       g.level = clamp(targetLvl, 0, 119)
       g.score = save.totalStars || 0
-      g.hearts = MODES[g.mode].hearts
+      g.hearts = getModeConfig(g.mode).hearts
       g.seen = {} // every new playthrough re-introduces the friends 👋
       g.seenPower = {} // ...and the power-up how-to pop-ups too! 🎁
       g.active = null
@@ -2952,7 +2953,7 @@ export default function Home() {
     const restartLevel = () => {
       audio.click()
       g.score = loadLocalSave().totalStars || 0
-      g.hearts = MODES[g.mode].hearts
+      g.hearts = getModeConfig(g.mode).hearts
       g.active = null
       g.shield = false
       beginLevel()
@@ -2961,7 +2962,7 @@ export default function Home() {
     const next = () => {
       audio.click()
       g.level++
-      g.hearts = MODES[g.mode].hearts // fresh hearts every level — kind & easy!
+      g.hearts = getModeConfig(g.mode).hearts // fresh hearts every level — kind & easy!
       beginLevel()
     }
 
@@ -3019,7 +3020,7 @@ export default function Home() {
       g.introBusy = false
       setFriend(null)
       g.player.cheer = 3 // 🥳 your pal cheers behind the reward screen!
-      const maxHearts = MODES[g.mode].hearts
+      const maxHearts = getModeConfig(g.mode).hearts
       const earned = g.hearts >= maxHearts ? 3 : g.hearts >= Math.ceil(maxHearts / 2) ? 2 : 1
       setStars(earned)
       try {
@@ -3138,7 +3139,7 @@ export default function Home() {
 
     /* hearts are low? the Heart Refill drops much more often 💗
        hearts are full? it almost never drops (no wasted gifts!) */
-    const heartWeight = () => (g.hearts <= 2 ? 3 : g.hearts >= MODES[g.mode].hearts ? 0.25 : 1)
+    const heartWeight = () => (g.hearts <= 2 ? 3 : g.hearts >= getModeConfig(g.mode).hearts ? 0.25 : 1)
 
     /* which gift floats down next? a friendly weighted pick */
     const pickPowerType = (): PowerUpType => {
@@ -3188,7 +3189,7 @@ export default function Home() {
       g.player.cheer = 1.1 // a little hip-hip-hooray bounce!
       addText(g, clamp(x, 80, g.w - 80), y - 26, `${cfg.emoji} ${cfg.name}!`, cfg.color, 20)
       if (type === 'heart') {
-        const maxHearts = MODES[g.mode].hearts
+        const maxHearts = getModeConfig(g.mode).hearts
         if (g.hearts < maxHearts) {
           g.hearts++ // one heart back — up to the maximum!
           addText(g, g.player.x, g.h - 170, '+1 💗', '#ff8fb1', 22)
@@ -3261,7 +3262,7 @@ export default function Home() {
        Which friend? A weighted pick from every enemy whose "fromLevel"
        has arrived — so new pals join the party gradually, level by level. */
     const spawnMonster = (L: LevelConfig) => {
-      const [rMin, rMax] = MODES[g.mode].monsterRadius // grown-ups get tinier targets!
+      const [rMin, rMax] = getModeConfig(g.mode).monsterRadius // grown-ups get tinier targets!
       const types = (Object.keys(ENEMIES) as EnemyType[]).filter((k) => g.level >= ENEMIES[k].fromLevel)
       let total = 0
       for (const k of types) total += ENEMIES[k].weight
@@ -4208,7 +4209,7 @@ export default function Home() {
         <div className="pointer-events-none absolute left-3 top-3 z-30 flex flex-col items-start gap-2">
           <div key={hurtKey} className={`flex items-center gap-1.5 rounded-full bg-white/85 py-2 pl-3 pr-4 shadow-md ${hud.hearts < hud.maxHearts ? 'heart-shake' : ''}`}>
             <CharacterPortrait id={hud.character} size={34} />
-            {Array.from({ length: MODES[hud.mode].hearts }, (_, i) => (
+            {Array.from({ length: getModeConfig(hud.mode).hearts }, (_, i) => (
               <Heart
                 key={i}
                 size={26}
@@ -4216,7 +4217,7 @@ export default function Home() {
                 className={i < hud.hearts ? 'fill-rose-500 text-rose-500' : 'fill-gray-200 text-gray-300'}
               />
             ))}
-            <span className="sr-only">{hud.hearts} of {MODES[hud.mode].hearts} hearts left</span>
+            <span className="sr-only">{hud.hearts} of {getModeConfig(hud.mode).hearts} hearts left</span>
           </div>
 
           {/* 🫧 the Bubble Shield is ready — it will block one hit! */}
@@ -4258,7 +4259,7 @@ export default function Home() {
 
         {/* ── HUD: level & progress (top-center; below hearts on phones) ── */}
         <div className="pointer-events-none absolute left-1/2 top-[68px] z-10 w-32 -translate-x-1/2 rounded-2xl bg-white/85 px-3 py-2 text-center shadow-md sm:top-3 sm:w-44 sm:px-4">
-          <div className="text-sm font-extrabold text-amber-600 sm:text-base">{MODES[hud.mode]?.levels[hud.level]?.name || `Level ${hud.level + 1}`}</div>
+          <div className="text-sm font-extrabold text-amber-600 sm:text-base">{getModeConfig(hud.mode).levels[hud.level]?.name || `Level ${hud.level + 1}`}</div>
           <div className="text-[10px] font-bold text-amber-500">World {Math.floor(hud.level / 10) + 1} of 12</div>
           <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-amber-100">
             <div
@@ -4866,14 +4867,14 @@ export default function Home() {
               <div className="floaty text-5xl" aria-hidden>⏸️</div>
               <h2 className="mt-2 text-2xl font-black text-amber-600 sm:text-3xl">Game Paused</h2>
               <p className="mt-1 text-sm font-bold text-gray-500">
-                {MODES[hud.mode].levels[hud.level]?.name || `Level ${hud.level + 1}`} · World {Math.floor(hud.level / 10) + 1}
+                {getModeConfig(hud.mode).levels[hud.level]?.name || `Level ${hud.level + 1}`} · World {Math.floor(hud.level / 10) + 1}
               </p>
 
               {/* Status summary */}
               <div className="my-4 flex items-center justify-center gap-4 rounded-2xl bg-amber-50 py-3 text-xs font-black text-amber-800">
                 <div className="flex items-center gap-1">
                   <Heart size={16} className="fill-rose-500 text-rose-500" />
-                  <span>{hud.hearts} / {MODES[hud.mode].hearts} Hearts</span>
+                  <span>{hud.hearts} / {getModeConfig(hud.mode).hearts} Hearts</span>
                 </div>
                 <span className="text-amber-200">|</span>
                 <div className="flex items-center gap-1">
@@ -4970,7 +4971,7 @@ export default function Home() {
                     <span className="flex flex-col items-start leading-tight">
                       <span>RESUME LEVEL {hud.level + 1}</span>
                       <span className="text-xs font-semibold text-emerald-100">
-                        {MODES[hud.mode].levels[hud.level]?.name || `World ${Math.floor(hud.level / 10) + 1}`} · {hud.mode === 'kids' ? 'Kids' : 'Grown-Ups'}
+                        {getModeConfig(hud.mode).levels[hud.level]?.name || `World ${Math.floor(hud.level / 10) + 1}`} · {hud.mode === 'kids' ? 'Kids' : 'Grown-Ups'}
                       </span>
                     </span>
                   </button>
@@ -5126,7 +5127,7 @@ export default function Home() {
                         const isBoss = i === 9
                         const rec = recordMap[levelIndex]
                         const earnedStars = rec?.stars || 0
-                        const lvlName = MODES[hud.mode].levels[levelIndex]?.name || `Level ${levelNumber}`
+                        const lvlName = getModeConfig(hud.mode).levels[levelIndex]?.name || `Level ${levelNumber}`
 
                         return (
                           <button
@@ -5343,7 +5344,7 @@ export default function Home() {
             <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
               <PartyPopper size={52} className="mx-auto text-pink-500" aria-hidden />
               <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">
-                {MODES[hud.mode]?.levels[hud.level]?.name || `Level ${hud.level + 1}`} Complete!
+                {getModeConfig(hud.mode).levels[hud.level]?.name || `Level ${hud.level + 1}`} Complete!
               </h2>
               <p className="mt-1 text-base font-bold text-gray-500">
                 You popped {goal} silly friends — and booped the boss! 🎉
@@ -5363,7 +5364,7 @@ export default function Home() {
                 {stars === 3 ? 'PERFECT! All hearts safe!' : stars === 2 ? 'Amazing flying!' : 'You did it — hooray!'}
               </p>
               <p className="mt-1 flex items-center justify-center gap-1 text-sm font-bold text-rose-400">
-                <Heart size={16} className="fill-rose-400 text-rose-400" aria-hidden /> +{MODES[hud.mode].hearts} fresh hearts for the next level!
+                <Heart size={16} className="fill-rose-400 text-rose-400" aria-hidden /> +{getModeConfig(hud.mode).hearts} fresh hearts for the next level!
               </p>
               <p className="mt-1 text-sm font-bold text-amber-500">
                 {CHARACTERS[hud.character].emoji} {CHARACTERS[hud.character].name} is so proud of you!
