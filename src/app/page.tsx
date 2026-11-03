@@ -48,6 +48,11 @@ import {
   Trophy,
   Volume2,
   VolumeX,
+  HelpCircle,
+  Mail,
+  MessageSquare,
+  ExternalLink,
+  X,
 } from 'lucide-react'
 import { loadLocalSave, persistStars, recordLevelCompletion, saveLocalProgress, SavedGameData } from '@/lib/storage'
 import {
@@ -2562,6 +2567,7 @@ export default function Home() {
   })
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
   const [hurtKey, setHurtKey] = useState(0) // changing this re-plays the heart-shake
   const [friend, setFriend] = useState<IntroInfo | null>(null) // "Meet a new friend!" pop-up
   const [lastMode, setLastMode] = useState<Mode | null>(null) // ⭐ chip on the mode you played last time
@@ -4182,6 +4188,19 @@ export default function Home() {
               </button>
             )}
 
+            {/* Help / Support Button */}
+            <button
+              onClick={(e) => {
+                e.currentTarget.blur()
+                setShowHelp(true)
+              }}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-amber-600 shadow-md transition hover:bg-white hover:text-amber-700 active:scale-90"
+              aria-label="Help and Contact Support"
+              title="Help & Contact"
+            >
+              <HelpCircle size={24} />
+            </button>
+
             {/* Mute Button */}
             <button
               onClick={(e) => {
@@ -5349,9 +5368,87 @@ export default function Home() {
       </div>
 
       {/* ════════ FOOTER (sticks to the bottom, always) ════════ */}
-      <footer className="mt-auto border-t-2 border-amber-100 bg-amber-50 px-4 py-1.5 text-center text-[11px] font-bold text-amber-700 sm:text-xs">
-        Made with 💛 for little heroes · Parents: tweak speeds, colors &amp; sounds at the top of the game file
+      <footer className="mt-auto flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t-2 border-amber-100 bg-amber-50 px-4 py-1.5 text-center text-[11px] font-bold text-amber-700 sm:text-xs">
+        <span>Made with 💛 for little heroes · Parents: tweak speeds, colors &amp; sounds at the top of the game file</span>
+        <button
+          onClick={() => setShowHelp(true)}
+          className="inline-flex items-center gap-1 rounded-full bg-amber-200/80 px-2.5 py-0.5 text-amber-900 transition hover:bg-amber-300 hover:text-black"
+        >
+          <HelpCircle size={13} />
+          <span>Need Help? Contact Support</span>
+        </button>
       </footer>
+      {/* 💌 HELP & CONTACT SUPPORT MODAL */}
+      {showHelp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="pop-in relative w-full max-w-md rounded-3xl border-4 border-amber-300 bg-amber-50 p-6 shadow-2xl">
+            <button
+              onClick={() => setShowHelp(false)}
+              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-amber-200 text-amber-800 transition hover:bg-amber-300"
+              aria-label="Close help modal"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="text-center">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 text-3xl shadow-md">
+                💬
+              </div>
+              <h2 className="text-2xl font-black text-amber-950">Need Help or Found a Bug?</h2>
+              <p className="mt-1 text-sm font-semibold text-amber-800">
+                We are here to help! If a level is stuck, stars did not save, or you have a suggestion:
+              </p>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3">
+              {/* Email direct link */}
+              <a
+                href="mailto:ak0787777@gmail.com?subject=Bubble%20Pop%20Adventure%20Feedback%20%2F%20Issue&body=Hi%20Abhi%2C%0A%0AI%20noticed%20an%20issue%20while%20playing%20Bubble%20Pop%20Adventure%3A%0A%0ADetails%3A%20%0A%0AThank%20you!"
+                className="flex items-center gap-3.5 rounded-2xl border-2 border-amber-200 bg-white p-3.5 shadow-sm transition hover:border-amber-400 hover:shadow-md"
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                  <Mail size={22} />
+                </div>
+                <div className="text-left">
+                  <div className="text-sm font-extrabold text-amber-950">Email Developer</div>
+                  <div className="text-xs font-semibold text-amber-700">ak0787777@gmail.com</div>
+                </div>
+              </a>
+
+              {/* GitHub Issues link */}
+              <a
+                href="https://github.com/abhi543/bubble/issues/new"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3.5 rounded-2xl border-2 border-amber-200 bg-white p-3.5 shadow-sm transition hover:border-amber-400 hover:shadow-md"
+              >
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-700">
+                  <MessageSquare size={22} />
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="flex items-center gap-1 text-sm font-extrabold text-purple-950">
+                    <span>Report on GitHub</span>
+                    <ExternalLink size={14} className="text-purple-600" />
+                  </div>
+                  <div className="text-xs font-semibold text-purple-700">Open a bug ticket or request</div>
+                </div>
+              </a>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-amber-100/80 p-3 text-center text-xs font-bold text-amber-900">
+              💡 Quick tip: Press <kbd className="rounded bg-white px-1.5 py-0.5 shadow-sm">Esc</kbd> or <kbd className="rounded bg-white px-1.5 py-0.5 shadow-sm">P</kbd> anytime to pause or resume your game!
+            </div>
+
+            <button
+              onClick={() => setShowHelp(false)}
+              className="mt-5 w-full rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 py-3 text-base font-black text-white shadow-md transition active:scale-95 hover:from-amber-600 hover:to-amber-700"
+            >
+              Back to Game
+            </button>
+          </div>
+        </div>
+      )}
+
     </main>
   )
 }
