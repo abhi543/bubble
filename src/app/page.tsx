@@ -90,7 +90,7 @@ const COLORS = {
      shootCooldown  = seconds between bubbles (smaller = faster shooting)
      fastMusic      = true = the music loops a little quicker (extra pep!)
    ─────────────────────────────────────────────────────────────────────── */
-type Mode = 'kids' | 'adults' | 'advanced'
+type Mode = 'kids' | 'adults'
 
 interface LevelConfig {
   name: string
@@ -142,16 +142,6 @@ const MODES: Record<Mode, ModeConfig> = {
     shootCooldown: 0.42,
     fastMusic: true,
     levels: generateLevels('adults'),
-  },
-  advanced: {
-    label: 'ADVANCED MODE',
-    emoji: '⚡',
-    blurb: 'hyper-speed challenge · 2 hearts · fast-paced elite play',
-    hearts: 2,
-    monsterRadius: [14, 20],
-    shootCooldown: 0.32,
-    fastMusic: true,
-    levels: generateLevels('advanced'),
   },
 }
 
@@ -647,7 +637,7 @@ function freshGame(): GameData {
   }
   const save = loadLocalSave()
   const initialMode = save.mode || 'kids'
-  const savedLevel = initialMode === 'kids' ? save.kidsHighestLevel : initialMode === 'advanced' ? (save.advancedHighestLevel || 0) : save.adultsHighestLevel
+  const savedLevel = initialMode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
   const savedScore = save.totalStars || 0
 
   return {
@@ -697,7 +687,7 @@ function freshGame(): GameData {
 const goalOf = (g: GameData) => (g.turbo ? 2 : levelsOf(g.mode)[g.level].goal)
 
 /* How many boops the current level's boss needs (turbo makes it quick too) */
-const bossHpOf = (g: GameData, b: BossConfig) => (g.turbo ? 2 : g.mode === 'advanced' ? Math.round(b.hpAdults * 1.35) : g.mode === 'adults' ? b.hpAdults : b.hpKids)
+const bossHpOf = (g: GameData, b: BossConfig) => (g.turbo ? 2 : g.mode === 'adults' ? b.hpAdults : b.hpKids)
 
 /* ═══════════════════════════════════════════════════════════════════════
    🔊 SOUND ENGINE — every beep is generated with the Web Audio API,
@@ -2624,7 +2614,7 @@ export default function Home() {
       const highestLvl = currentMode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
       setSelectedWorld(Math.floor(highestLvl / 10) + 1)
       const saved = localStorage.getItem('bubblePopMode')
-      if (saved === 'kids' || saved === 'adults' || saved === 'advanced') setLastMode(saved)
+      if (saved === 'kids' || saved === 'adults') setLastMode(saved)
       const savedPal = localStorage.getItem('bubblePopCharacter')
       if (savedPal === 'rocky' || savedPal === 'dolly' || savedPal === 'bunny' || savedPal === 'zippy') setPal(savedPal)
     } catch {
@@ -2692,7 +2682,7 @@ export default function Home() {
       const kind = CHARACTERS[g.character].bubble
       const py = g.h - 96
 
-      if (g.mode === 'adults' || g.mode === 'advanced') {
+      if (g.mode === 'adults') {
         // 🎯 GROWN-UPS MODE: Character perks (firing straight upward)
         const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
 
@@ -2863,7 +2853,7 @@ export default function Home() {
         localStorage.setItem('bubblePopMode', m) // remember it for next visit
         const save = loadLocalSave()
         save.mode = m
-        const resumeL = m === 'kids' ? save.kidsHighestLevel : m === 'advanced' ? (save.advancedHighestLevel || 0) : save.adultsHighestLevel
+        const resumeL = m === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
         g.level = clamp(resumeL, 0, 119)
         saveLocalProgress(save)
         setSaveData(save)
@@ -2902,7 +2892,7 @@ export default function Home() {
       audio.click()
       const save = loadLocalSave()
       setSaveData(save)
-      const highest = g.mode === 'kids' ? save.kidsHighestLevel : g.mode === 'advanced' ? (save.advancedHighestLevel || 0) : save.adultsHighestLevel
+      const highest = g.mode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
       const targetLvl = chosenLevel !== undefined ? chosenLevel : highest
       g.level = clamp(targetLvl, 0, 119)
       g.score = save.totalStars || 0
@@ -2925,7 +2915,7 @@ export default function Home() {
       audio.click()
       const save = loadLocalSave()
       setSaveData(save)
-      const currentHighest = g.mode === 'kids' ? save.kidsHighestLevel : g.mode === 'advanced' ? (save.advancedHighestLevel || 0) : save.adultsHighestLevel
+      const currentHighest = g.mode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
       setSelectedWorld(Math.floor(currentHighest / 10) + 1)
       g.state = 'levelSelect'
       setUi('levelSelect')
@@ -3388,8 +3378,8 @@ export default function Home() {
 
       // 🚀 Standard responsive movement for all modes (arrows completely removed)
       let vx = 0
-      if (keys.left) vx -= PLAYER.speed * (g.mode === 'advanced' ? 1.25 : g.mode === 'adults' ? 1.15 : 1)
-      if (keys.right) vx += PLAYER.speed * (g.mode === 'advanced' ? 1.25 : g.mode === 'adults' ? 1.15 : 1)
+      if (keys.left) vx -= PLAYER.speed * (g.mode === 'adults' ? 1.15 : 1)
+      if (keys.right) vx += PLAYER.speed * (g.mode === 'adults' ? 1.15 : 1)
       if (g.dragging && g.targetX !== null) {
         vx = clamp((g.targetX - p.x) * 10, -PLAYER.speed * 1.4, PLAYER.speed * 1.4)
       }
@@ -3539,7 +3529,7 @@ export default function Home() {
       }
 
       /* 🌟 ENEMY STAR ATTACKS: Controlled, capped & smooth */
-      const maxStarsAllowed = g.mode === 'kids' ? 2 : g.mode === 'advanced' ? 5 : 4
+      const maxStarsAllowed = g.mode === 'kids' ? 2 : 4
       if (g.enemyStars.length < maxStarsAllowed) {
         for (const m of g.monsters) {
           if (m.y < 40 || m.y > g.h - 160) continue
@@ -3549,15 +3539,13 @@ export default function Home() {
             const isBoss = m.boss >= 0
             m.shootT = isBoss
               ? rand(2.4, 4.0)
-              : g.mode === 'advanced'
-              ? rand(3.0, 5.5)
               : g.mode === 'adults'
               ? rand(4.0, 7.5)
               : rand(6.5, 11.0)
 
             const dxToPlayer = p.x - m.x
             const aimFactor = clamp(dxToPlayer * 0.35, -60, 60)
-            const starVy = rand(140, 200) * (g.mode === 'advanced' ? 1.2 : 1)
+            const starVy = rand(140, 200)
 
             g.enemyStars.push({
               x: m.x,
@@ -4383,7 +4371,7 @@ export default function Home() {
               {(() => {
                 const s = saveData || loadLocalSave()
                 const curMode = s.mode || 'kids'
-                const highestLvl = curMode === 'kids' ? s.kidsHighestLevel : curMode === 'advanced' ? (s.advancedHighestLevel || 0) : s.adultsHighestLevel
+                const highestLvl = curMode === 'kids' ? s.kidsHighestLevel : s.adultsHighestLevel
                 const currentStars = s.totalStars || 0
 
                 return (
@@ -4974,7 +4962,7 @@ export default function Home() {
                     <span className="flex flex-col items-start leading-tight">
                       <span>RESUME LEVEL {hud.level + 1}</span>
                       <span className="text-xs font-semibold text-emerald-100">
-                        {MODES[hud.mode].levels[hud.level]?.name || `World ${Math.floor(hud.level / 10) + 1}`} · {hud.mode === 'kids' ? 'Kids' : hud.mode === 'advanced' ? 'Advanced' : 'Grown-Ups'}
+                        {MODES[hud.mode].levels[hud.level]?.name || `World ${Math.floor(hud.level / 10) + 1}`} · {hud.mode === 'kids' ? 'Kids' : 'Grown-Ups'}
                       </span>
                     </span>
                   </button>
@@ -5005,7 +4993,7 @@ export default function Home() {
                 {(() => {
                   const s = saveData || (mounted ? loadLocalSave() : null)
                   const curMode = s?.mode || 'kids'
-                  const highestLvl = s ? (curMode === 'kids' ? s.kidsHighestLevel : curMode === 'advanced' ? (s.advancedHighestLevel || 0) : s.adultsHighestLevel) : 0
+                  const highestLvl = s ? (curMode === 'kids' ? s.kidsHighestLevel : s.adultsHighestLevel) : 0
                   if (highestLvl < 9) return null
 
                   return (
@@ -5058,7 +5046,7 @@ export default function Home() {
                 <div className="text-center">
                   <h2 className="text-xl font-extrabold text-pink-500 sm:text-2xl">World Map</h2>
                   <div className="text-xs font-bold text-gray-400">
-                    Mode: <span className="font-extrabold text-amber-600">{hud.mode === 'kids' ? 'Kids 🧒' : hud.mode === 'advanced' ? 'Advanced ⚡' : 'Grown-Ups 🧑‍🚀'}</span> · ⭐ {hud.score} stars
+                    Mode: <span className="font-extrabold text-amber-600">{hud.mode === 'kids' ? 'Kids 🧒' : 'Grown-Ups 🧑‍🚀'}</span> · ⭐ {hud.score} stars
                   </div>
                 </div>
                 <button
@@ -5074,8 +5062,8 @@ export default function Home() {
                 const wId = (selectedWorld as 1|2|3|4|5|6|7|8|9|10|11|12)
                 const wCfg = WORLDS[wId] || WORLDS[1]
                 const curSave = saveData || (mounted ? loadLocalSave() : null)
-                const highestLevel = curSave ? (hud.mode === 'kids' ? curSave.kidsHighestLevel : hud.mode === 'advanced' ? (curSave.advancedHighestLevel || 0) : curSave.adultsHighestLevel) : 0
-                const recordMap = curSave ? (hud.mode === 'kids' ? curSave.kidsLevelsRecord : hud.mode === 'advanced' ? (curSave.advancedLevelsRecord || {}) : curSave.adultsLevelsRecord) : {}
+                const highestLevel = curSave ? (hud.mode === 'kids' ? curSave.kidsHighestLevel : curSave.adultsHighestLevel) : 0
+                const recordMap = curSave ? (hud.mode === 'kids' ? curSave.kidsLevelsRecord : curSave.adultsLevelsRecord) : {}
                 const worldUnlocked = (wId - 1) * 10 <= highestLevel
 
                 return (
@@ -5253,22 +5241,7 @@ export default function Home() {
                   <span className="absolute -top-2 right-3 rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold text-pink-500 shadow" aria-hidden>⭐ last time</span>
                 )}
               </button>
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur()
-                  controlsRef.current?.pickMode('advanced')
-                }}
-                className="relative mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-purple-500 text-xl font-extrabold text-white shadow-lg shadow-purple-200 transition hover:bg-purple-600 active:scale-95"
-              >
-                <span className="text-3xl" aria-hidden>⚡</span>
-                <span className="flex flex-col items-start leading-tight">
-                  <span>{MODES.advanced.label}</span>
-                  <span className="text-[11px] font-bold text-white/90">{MODES.advanced.blurb}</span>
-                </span>
-                {lastMode === 'advanced' && (
-                  <span className="absolute -top-2 right-3 rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold text-purple-600 shadow" aria-hidden>⭐ last time</span>
-                )}
-              </button>
+
               <button
                 onClick={(e) => {
                   e.currentTarget.blur()
@@ -5443,10 +5416,10 @@ export default function Home() {
             <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-amber-300 bg-white p-6 text-center shadow-2xl sm:p-8">
               <Trophy size={56} className="mx-auto wiggle text-amber-400" aria-hidden />
               <h2 className="mt-2 text-3xl font-extrabold text-amber-500 sm:text-4xl">
-                {hud.mode === 'advanced' ? 'ADVANCED MASTER!' : hud.mode === 'adults' ? 'GROWN-UP LEGEND!' : 'YOU DID IT!'}
+                {hud.mode === 'adults' ? 'GROWN-UP LEGEND!' : 'YOU DID IT!'}
               </h2>
               <p className="mt-1 text-base font-bold text-gray-500">
-                {hud.mode === 'advanced' ? 'You conquered the grueling Advanced Mode — pure mastery! ⚡🏆' : hud.mode === 'adults' ? 'You conquered Grown-Ups Mode — a Bubble Pop Legend! 🏆' : 'You’re an official Bubble Pop Champion! 🏆'}
+                {hud.mode === 'adults' ? 'You conquered Grown-Ups Mode — a Bubble Pop Legend! 🏆' : 'You’re an official Bubble Pop Champion! 🏆'}
               </p>
               <div className="mt-4 flex items-center justify-center gap-2">
                 {[0, 1, 2].map((i) => (

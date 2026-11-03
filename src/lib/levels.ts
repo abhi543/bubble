@@ -628,10 +628,9 @@ export const ALL_BOSSES: BossConfig[] = [
 /* ═══════════════════════════════════════════════════════════════════════
    MATHEMATICAL LEVEL CURVES (Levels 1 to 120)
    ═══════════════════════════════════════════════════════════════════════ */
-export function generateLevels(mode: 'kids' | 'adults' | 'advanced'): LevelConfig[] {
+export function generateLevels(mode: 'kids' | 'adults'): LevelConfig[] {
   const levels: LevelConfig[] = []
   const isAdults = mode === 'adults'
-  const isAdv = mode === 'advanced'
 
   for (let idx = 0; idx < 120; idx++) {
     const levelNumber = idx + 1
@@ -642,23 +641,23 @@ export function generateLevels(mode: 'kids' | 'adults' | 'advanced'): LevelConfi
     // 1. Goal calculation formula: N(L) = min(85, round(12 + 0.62 * L + 8 * ln(1 + 0.08 * L)))
     const rawGoal = Math.min(85, Math.round(12 + 0.62 * levelNumber + 8 * Math.log(1 + 0.08 * levelNumber)))
     const goal = isBossLevel
-      ? Math.round(rawGoal * (isAdv ? 1.25 : isAdults ? 1.0 : 0.8))
-      : Math.round(rawGoal * (isAdv ? 1.35 : isAdults ? 1.15 : 0.9))
+      ? Math.round(rawGoal * (isAdults ? 1.0 : 0.8))
+      : Math.round(rawGoal * (isAdults ? 1.15 : 0.9))
 
     // 2. Fall speed progression (sigmoidal scaling)
-    const baseFall = isAdv ? 75 : isAdults ? 55 : 38
-    const maxFallCeil = isAdv ? 210 : isAdults ? 160 : 110
+    const baseFall = isAdults ? 55 : 38
+    const maxFallCeil = isAdults ? 160 : 110
     const vMult = 1.0 + 1.4 / (1 + Math.exp(-0.045 * (levelNumber - 55)))
     const fallSpeed = Math.round(baseFall * vMult)
     const fallSpeedMax = Math.min(maxFallCeil, Math.round(fallSpeed * 1.55))
 
     // 3. Spawn cadence: S_delay(L, 0) scaling down
-    const spawnEvery = Math.max(0.75, Number(( (isAdv ? 1.8 : isAdults ? 2.4 : 2.8) - 0.0095 * levelNumber ).toFixed(2)))
-    const spawnEveryMin = Math.max(0.48, Number(( spawnEvery * 0.65 ).toFixed(2)))
+    const spawnEvery = Math.max(0.95, Number(( (isAdults ? 2.4 : 2.8) - 0.0095 * levelNumber ).toFixed(2)))
+    const spawnEveryMin = Math.max(0.60, Number(( spawnEvery * 0.70 ).toFixed(2)))
 
     // 4. Drift wiggle & on-screen enemy counts
-    const drift = Math.round((isAdv ? 26 : 20) + 0.45 * levelNumber)
-    const maxOnScreen = Math.min(isAdv ? 8 : isAdults ? 6 : 5, Math.round((isAdv ? 4 : 3) + levelNumber * 0.04))
+    const drift = Math.round(20 + 0.45 * levelNumber)
+    const maxOnScreen = Math.min(isAdults ? 6 : 5, Math.round(3 + levelNumber * 0.035))
 
     const world = WORLDS[worldId]
     const name = isBossLevel

@@ -23,16 +23,13 @@ export interface LevelRecord {
 
 export interface SavedGameData {
   profile: PlayerProfile
-  mode: 'kids' | 'adults' | 'advanced'
+  mode: 'kids' | 'adults'
   kidsHighestLevel: number
   adultsHighestLevel: number
-  advancedHighestLevel?: number
   kidsStarsTotal: number
   adultsStarsTotal: number
-  advancedStarsTotal?: number
   kidsLevelsRecord: Record<number, LevelRecord>
   adultsLevelsRecord: Record<number, LevelRecord>
-  advancedLevelsRecord?: Record<number, LevelRecord>
   unlockedCharacters: string[]
   unlockedCosmetics: string[]
   activeCosmetic?: string
@@ -104,17 +101,12 @@ export function createDefaultSave(): SavedGameData {
     mode: 'kids',
     kidsHighestLevel: 0,
     adultsHighestLevel: 0,
-    advancedHighestLevel: 0,
     kidsStarsTotal: 0,
     adultsStarsTotal: 0,
-    advancedStarsTotal: 0,
     kidsLevelsRecord: {
       0: { status: 'unlocked', stars: 0, highScore: 0, bossDefeated: false, clearedAt: null },
     },
     adultsLevelsRecord: {
-      0: { status: 'unlocked', stars: 0, highScore: 0, bossDefeated: false, clearedAt: null },
-    },
-    advancedLevelsRecord: {
       0: { status: 'unlocked', stars: 0, highScore: 0, bossDefeated: false, clearedAt: null },
     },
     unlockedCharacters: ['rocky'],
@@ -183,7 +175,7 @@ export function saveLocalProgress(data: SavedGameData): void {
  * Record a level completion into the local save
  */
 export function recordLevelCompletion(
-  mode: 'kids' | 'adults' | 'advanced',
+  mode: 'kids' | 'adults',
   levelIndex: number,
   stars: number,
   score: number,
@@ -257,7 +249,6 @@ export function persistStars(currentScore: number): void {
   if (currentScore > (save.totalStars || 0)) {
     save.totalStars = currentScore
     if (save.mode === 'kids') save.kidsStarsTotal = Math.max(save.kidsStarsTotal || 0, currentScore);
-    else if (save.mode === 'advanced') save.advancedStarsTotal = Math.max(save.advancedStarsTotal || 0, currentScore);
     else save.adultsStarsTotal = Math.max(save.adultsStarsTotal || 0, currentScore);
     saveLocalProgress(save);
   }
