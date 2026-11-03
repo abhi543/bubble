@@ -92,16 +92,6 @@ const COLORS = {
    ─────────────────────────────────────────────────────────────────────── */
 type Mode = 'kids' | 'adults'
 
-interface LevelConfig {
-  name: string
-  goal: number
-  spawnEvery: number
-  spawnEveryMin: number
-  fallSpeed: number
-  fallSpeedMax: number
-  drift: number
-  maxOnScreen: number
-}
 
 interface ModeConfig {
   label: string
@@ -3822,7 +3812,7 @@ export default function Home() {
 
       /* ── 🎁⭐ gifts & bonus stars drift down — catch them! ── */
       const magnet = g.active?.type === 'magnet'
-      const palY = g.h - 96 // the pal's hover height
+      // palY defined above for enemy stars and powerups
       for (let i = g.powerups.length - 1; i >= 0; i--) {
         const u = g.powerups[i]
         if (magnet) {
