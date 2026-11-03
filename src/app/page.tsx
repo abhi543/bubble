@@ -159,7 +159,7 @@ const MODES: Record<Mode, ModeConfig> = {
 const ENEMIES: Record<EnemyType, EnemyConfig> = ALL_ENEMIES
 const BOSSES: BossConfig[] = ALL_BOSSES
 
-const levelsOf = (m: Mode): LevelConfig[] => MODES[m].levels
+const levelsOf = (m: Mode): LevelConfig[] => (MODES[m] || MODES.kids).levels
 const FONT = '"Comic Sans MS", "Chalkboard SE", "Comic Neue", system-ui, sans-serif'
 
 /* ───────────────────────────────────────────────────────────────────────
@@ -636,7 +636,15 @@ function freshGame(): GameData {
     /* private browsing — no problem */
   }
   const save = loadLocalSave()
-  const initialMode = save.mode || 'kids'
+  let initialMode: Mode = (save.mode === 'kids' || save.mode === 'adults') ? save.mode : 'kids'
+  try {
+    const localMode = typeof window !== 'undefined' ? localStorage.getItem('bubblePopMode') : null
+    if (localMode === 'kids' || localMode === 'adults') {
+      initialMode = localMode
+    } else if (localMode) {
+      localStorage.setItem('bubblePopMode', initialMode)
+    }
+  } catch {}
   const savedLevel = initialMode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
   const savedScore = save.totalStars || 0
 

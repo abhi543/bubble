@@ -136,15 +136,25 @@ export function loadLocalSave(): SavedGameData {
       saveLocalProgress(fresh)
       return fresh
     }
-    const parsed = JSON.parse(raw) as SavedGameData
-    if (!parsed.profile || !parsed.profile.recoveryCode) {
+    const parsed = JSON.parse(raw) as any
+    if (!parsed || !parsed.profile || !parsed.profile.recoveryCode) {
       const fresh = createDefaultSave()
       cachedSave = fresh
       saveLocalProgress(fresh)
       return fresh
     }
-    cachedSave = parsed
-    return parsed
+    // Sanitize mode in case an older or corrupted save had 'advanced' or invalid mode
+    if (parsed.mode !== 'kids' && parsed.mode !== 'adults') {
+      parsed.mode = 'kids'
+    }
+    if (!parsed.kidsLevelsRecord) {
+      parsed.kidsLevelsRecord = { 0: { status: 'unlocked', stars: 0, highScore: 0, bossDefeated: false, clearedAt: null } }
+    }
+    if (!parsed.adultsLevelsRecord) {
+      parsed.adultsLevelsRecord = { 0: { status: 'unlocked', stars: 0, highScore: 0, bossDefeated: false, clearedAt: null } }
+    }
+    cachedSave = parsed as SavedGameData
+    return cachedSave
   } catch (err) {
     const fallback = createDefaultSave()
     cachedSave = fallback
