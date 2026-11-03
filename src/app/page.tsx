@@ -2471,7 +2471,7 @@ function render(ctx: CanvasRenderingContext2D, g: GameData) {
   for (const u of g.powerups) drawPowerUp(ctx, u, g.time)
   for (const s of g.shots) drawShot(ctx, s, g.time)
   drawPlayer(ctx, g)
-  drawAimArrow(ctx, g)
+  // drawAimArrow(ctx, g) - arrow completely removed
   drawParticles(ctx, g)
   // 🐌 Slow Motion dreamy glow — a soft sleepy ring around the edges
   if (g.active?.type === 'slow') {
@@ -2649,20 +2649,18 @@ export default function Home() {
       const py = g.h - 96
 
       if (g.mode === 'adults') {
-        // 🎯 GROWN-UPS MODE: UNIQUE PERKS PER CHARACTER
-        const aimAngle = g.player.aimAngle ?? 0
+        // 🎯 GROWN-UPS MODE: Character perks (firing straight upward)
         const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
 
         if (g.character === 'rocky') {
           // 🚀 Rocky: Heavy Piercing Star Shot (pierces 2 enemies!)
           g.player.cool = 0.52
           for (const offset of fan) {
-            const ang = aimAngle + offset
             g.shots.push({
               x: g.player.x,
               y: py - 44,
-              vy: -PLAYER.shotSpeed * 1.15 * Math.cos(ang),
-              vx: PLAYER.shotSpeed * 1.15 * Math.sin(ang),
+              vy: -PLAYER.shotSpeed * 1.15 * Math.cos(offset),
+              vx: PLAYER.shotSpeed * 1.15 * Math.sin(offset),
               r: 15,
               kind: 'star',
               wob: rand(0, 6),
@@ -2672,16 +2670,13 @@ export default function Home() {
         } else if (g.character === 'dolly') {
           // 🐬 Dolly: Twin Hydro-Volley (fires 2 parallel bubbles side by side)
           g.player.cool = 0.44
-          const perpX = Math.cos(aimAngle) * 14
-          const perpY = Math.sin(aimAngle) * 14
           for (const sign of [-1, 1]) {
             for (const offset of fan) {
-              const ang = aimAngle + offset
               g.shots.push({
-                x: g.player.x + perpX * sign,
-                y: py - 44 + perpY * sign,
-                vy: -PLAYER.shotSpeed * Math.cos(ang),
-                vx: PLAYER.shotSpeed * Math.sin(ang),
+                x: g.player.x + 14 * sign,
+                y: py - 44,
+                vy: -PLAYER.shotSpeed * Math.cos(offset),
+                vx: PLAYER.shotSpeed * Math.sin(offset),
                 r: 9,
                 kind: 'water',
                 wob: rand(0, 6),
@@ -2692,43 +2687,39 @@ export default function Home() {
           // 🐰 Bunny: Rapid-Fire Love Blaster (super fast fire rate!)
           g.player.cool = 0.22
           for (const offset of fan) {
-            const ang = aimAngle + offset
             g.shots.push({
               x: g.player.x,
               y: py - 44,
-              vy: -PLAYER.shotSpeed * 1.1 * Math.cos(ang),
-              vx: PLAYER.shotSpeed * 1.1 * Math.sin(ang),
+              vy: -PLAYER.shotSpeed * 1.1 * Math.cos(offset),
+              vx: PLAYER.shotSpeed * 1.1 * Math.sin(offset),
               r: 10,
               kind: 'heart',
               wob: rand(0, 6),
             })
           }
         } else if (g.character === 'zippy') {
-          // 🤖 Zippy: Wall-Bouncing Trick Shot (reflects off side walls 2 times!)
+          // 🤖 Zippy: Rainbow Pop
           g.player.cool = 0.40
           for (const offset of fan) {
-            const ang = aimAngle + offset
             g.shots.push({
               x: g.player.x,
               y: py - 44,
-              vy: -PLAYER.shotSpeed * Math.cos(ang),
-              vx: PLAYER.shotSpeed * Math.sin(ang),
+              vy: -PLAYER.shotSpeed * Math.cos(offset),
+              vx: PLAYER.shotSpeed * Math.sin(offset),
               r: 12,
               kind: 'rainbow',
               wob: rand(0, 6),
-              bounces: 2,
             })
           }
         } else if (g.character === 'panda') {
           // 🐼 Panda: Giant Clover Piercer (pierces 3 enemies!)
           g.player.cool = 0.58
           for (const offset of fan) {
-            const ang = aimAngle + offset
             g.shots.push({
               x: g.player.x,
               y: py - 44,
-              vy: -PLAYER.shotSpeed * Math.cos(ang),
-              vx: PLAYER.shotSpeed * Math.sin(ang),
+              vy: -PLAYER.shotSpeed * Math.cos(offset),
+              vx: PLAYER.shotSpeed * Math.sin(offset),
               r: 16,
               kind: 'star',
               wob: rand(0, 6),
@@ -2741,7 +2732,7 @@ export default function Home() {
           const pelletOffsets = [-0.18, 0, 0.18]
           for (const pOff of pelletOffsets) {
             for (const offset of fan) {
-              const ang = aimAngle + offset + pOff
+              const ang = offset + pOff
               g.shots.push({
                 x: g.player.x,
                 y: py - 44,
@@ -3347,40 +3338,16 @@ export default function Home() {
       const p = g.player
       if (p.aimAngle === undefined) p.aimAngle = 0
 
-      if (g.mode === 'adults') {
-        // 🎯 GROWN-UPS MODE: Character stays FIXED at center!
-        // Moving controls rotate the aiming arrow instead of moving the character!
-        p.x = g.w / 2
-
-        // 🔄 360-Degree Aiming: Rotate freely with Left/Right (or A/D) keys
-        const aimSpeed = 3.2 // radians per second
-        if (keys.left) p.aimAngle -= aimSpeed * dt
-        if (keys.right) p.aimAngle += aimSpeed * dt
-
-        // 🎯 Aim directly at cursor/finger anywhere on screen (Full 360°)
-        if (g.dragging && g.targetX !== null && g.targetY !== undefined && g.targetY !== null) {
-          const py = g.h - 96 - 44
-          const dx = g.targetX - p.x
-          const dy = g.targetY - py
-          // Angle 0 is straight up, positive clockwise
-          p.aimAngle = Math.atan2(dx, -dy)
-        }
-        // Keep angle normalized between -PI and +PI
-        while (p.aimAngle > Math.PI) p.aimAngle -= Math.PI * 2
-        while (p.aimAngle < -Math.PI) p.aimAngle += Math.PI * 2
-        p.tilt = clamp(p.aimAngle, -1, 1) * 0.45 // cute character lean
-      } else {
-        // 🧒 KIDS MODE: Classic gentle sliding
-        let vx = 0
-        if (keys.left) vx -= PLAYER.speed
-        if (keys.right) vx += PLAYER.speed
-        if (g.dragging && g.targetX !== null) {
-          vx = clamp((g.targetX - p.x) * 10, -PLAYER.speed * 1.4, PLAYER.speed * 1.4)
-        }
-        p.x = clamp(p.x + vx * dt, 40, g.w - 40)
-        const lean = clamp(vx / PLAYER.speed, -1, 1) * 0.22
-        p.tilt += (lean - p.tilt) * Math.min(1, dt * 10)
+      // 🚀 Standard responsive movement for all modes (arrows completely removed)
+      let vx = 0
+      if (keys.left) vx -= PLAYER.speed * (g.mode === 'adults' ? 1.15 : 1)
+      if (keys.right) vx += PLAYER.speed * (g.mode === 'adults' ? 1.15 : 1)
+      if (g.dragging && g.targetX !== null) {
+        vx = clamp((g.targetX - p.x) * 10, -PLAYER.speed * 1.4, PLAYER.speed * 1.4)
       }
+      p.x = clamp(p.x + vx * dt, 40, g.w - 40)
+      const lean = clamp(vx / PLAYER.speed, -1, 1) * 0.22
+      p.tilt += (lean - p.tilt) * Math.min(1, dt * 10)
       p.cool -= dt
       if (keys.shoot) shootNow()
 
@@ -3826,11 +3793,6 @@ export default function Home() {
         g.dragging = true
         g.targetX = pos.x
         g.targetY = pos.y
-        if (g.mode === 'adults') {
-          // Immediately aim towards tapped point
-          const py = g.h - 96 - 44
-          g.player.aimAngle = Math.atan2(pos.x - g.player.x, -(pos.y - py))
-        }
       }
     }
     const onPointerMove = (e: PointerEvent) => {
@@ -3840,24 +3802,15 @@ export default function Home() {
       if (g.state === 'playing' && g.dragging) {
         g.targetX = pos.x
         g.targetY = pos.y
-        if (g.mode === 'adults') {
-          const py = g.h - 96 - 44
-          g.player.aimAngle = Math.atan2(pos.x - g.player.x, -(pos.y - py))
-        }
       }
     }
     const onPointerUp = (e: PointerEvent) => {
       if (!drag.active || e.pointerId !== drag.id) return
       drag.active = false
       g.dragging = false
-      const quick = performance.now() - drag.t0 < 450
-      // In Grown-Ups mode: tap or release after aiming immediately shoots!
-      if (g.state === 'playing') {
-        if (g.mode === 'adults') {
-          shootNow()
-        } else if (!drag.moved && quick) {
-          shootNow() // Kids mode tap
-        }
+      const quick = performance.now() - drag.t0 < 350
+      if (g.state === 'playing' && !drag.moved && quick) {
+        shootNow() // tap to shoot!
       }
     }
     const onPointerCancel = () => {
