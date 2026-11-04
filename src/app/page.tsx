@@ -616,6 +616,10 @@ interface GameData {
   seenPower: Partial<Record<PowerUpType, boolean>> // first-time gift pop-ups
   et: number // "enemy time" — crawls at half speed during Slow Motion 🐌
   nextMonsterId: number
+  frenzyMeter: number // 0 to 100 progress towards Bubble Rush
+  frenzyActive: boolean // true during the 6-second Super Pop Rush
+  frenzyTimer: number // remaining duration of frenzy
+  streak: number // current consecutive pop streak
 }
 
 function freshGame(): GameData {
@@ -681,6 +685,10 @@ function freshGame(): GameData {
     seenPower: {},
     et: 0,
     nextMonsterId: 1,
+    frenzyMeter: 0,
+    frenzyActive: false,
+    frenzyTimer: 0,
+    streak: 0,
   }
 }
 
@@ -895,6 +903,27 @@ class GameAudio {
       this.tone({ freq: f, time: t + i * 0.12, dur: 0.22, type: 'triangle', vol: 0.2 })
       this.tone({ freq: f * 2, time: t + i * 0.12 + 0.03, dur: 0.12, vol: 0.07 })
     })
+  }
+
+  /* 🌈 ecstatic ascending fanfare when Bubble Rush / Frenzy Mode activates! */
+  frenzyStart() {
+    this.init()
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    const notes = [523.25, 659.25, 783.99, 1046.5, 1318.51, 1567.98] // C5 E5 G5 C6 E6 G6
+    notes.forEach((f, i) => {
+      this.tone({ freq: f, time: t + i * 0.06, dur: 0.16, type: 'triangle', vol: 0.22 })
+      this.tone({ freq: f * 1.5, time: t + i * 0.06 + 0.02, dur: 0.1, type: 'sine', vol: 0.1 })
+    })
+  }
+
+  /* ✨ rapid sparkling laser pop during Bubble Rush shooting */
+  frenzyShoot() {
+    this.init()
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    const base = pick([880, 1046.5, 1174.66, 1318.51])
+    this.tone({ freq: base, time: t, dur: 0.08, type: 'triangle', vol: 0.18, glide: base * 1.5 })
   }
 
   /* little fanfare when a level is complete */
@@ -2514,6 +2543,17 @@ function render(ctx: CanvasRenderingContext2D, g: GameData) {
   drawPlayer(ctx, g)
   // drawAimArrow(ctx, g) - arrow completely removed
   drawParticles(ctx, g)
+  // ⚡ Frenzy Bubble Rush — vibrant rainbow energetic edge aura!
+  if (g.frenzyActive) {
+    const aura = ctx.createRadialGradient(g.w / 2, g.h / 2, g.h * 0.2, g.w / 2, g.h / 2, g.h * 0.75)
+    const hue = (g.time * 260) % 360
+    aura.addColorStop(0, 'rgba(255,255,255,0)')
+    aura.addColorStop(0.85, `hsla(${hue}, 100%, 75%, 0.18)`)
+    aura.addColorStop(1, `hsla(${(hue + 60) % 360}, 100%, 65%, 0.35)`)
+    ctx.fillStyle = aura
+    ctx.fillRect(0, 0, g.w, g.h)
+  }
+
   // 🐌 Slow Motion dreamy glow — a soft sleepy ring around the edges
   if (g.active?.type === 'slow') {
     const grad = ctx.createRadialGradient(g.w / 2, g.h / 2, g.h * 0.18, g.w / 2, g.h / 2, g.h * 0.72)
@@ -2600,6 +2640,9 @@ export default function Home() {
     shield: false,
     powerType: null as PowerUpType | null,
     powerStamp: 0,
+    frenzyMeter: 0,
+    frenzyActive: false,
+    streak: 0,
   })
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
@@ -2677,9 +2720,10 @@ export default function Home() {
         const bossActive = g.monsters.some((m) => m.boss >= 0)
         const powerType = g.active?.type ?? null
         const powerStamp = g.active?.startedAt ?? 0
-        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode && prev.character === g.character && prev.bossActive === bossActive && prev.shield === g.shield && prev.powerType === powerType && prev.powerStamp === powerStamp)
+        const fMeter = Math.round(g.frenzyMeter)
+        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode && prev.character === g.character && prev.bossActive === bossActive && prev.shield === g.shield && prev.powerType === powerType && prev.powerStamp === powerStamp && prev.frenzyMeter === fMeter && prev.frenzyActive === g.frenzyActive && prev.streak === g.streak)
           return prev
-        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode, character: g.character, bossActive, shield: g.shield, powerType, powerStamp }
+        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode, character: g.character, bossActive, shield: g.shield, powerType, powerStamp, frenzyMeter: fMeter, frenzyActive: g.frenzyActive, streak: g.streak }
       })
     }
 
@@ -2689,6 +2733,26 @@ export default function Home() {
       if (g.state !== 'playing' || g.player.cool > 0) return
       const kind = CHARACTERS[g.character].bubble
       const py = g.h - 96
+
+      // ⚡ FRENZY BUBBLE RUSH: Hyper-speed triple rainbow barrage!
+      if (g.frenzyActive) {
+        g.player.cool = 0.11 // Ultra rapid-fire
+        const angles = [-0.22, 0, 0.22]
+        for (const ang of angles) {
+          g.shots.push({
+            x: g.player.x + (ang === 0 ? 0 : ang * 45),
+            y: py - 44,
+            vy: -PLAYER.shotSpeed * 1.35 * Math.cos(ang),
+            vx: PLAYER.shotSpeed * 1.35 * Math.sin(ang),
+            r: 13,
+            kind: 'rainbow',
+            wob: rand(0, 6),
+            pierce: 2,
+          })
+        }
+        audio.frenzyShoot()
+        return
+      }
 
       if (g.mode === 'adults') {
         // 🎯 GROWN-UPS MODE: Character perks (firing straight upward)
@@ -2823,6 +2887,10 @@ export default function Home() {
       g.player.surprised = 0 // fresh face, fresh level!
       g.player.cheer = 0
       g.dragging = false
+      g.frenzyMeter = 0
+      g.frenzyActive = false
+      g.frenzyTimer = 0
+      g.streak = 0
       g.targetX = null
       g.targetY = null
       // Apply pre-level booster if bought
@@ -3043,6 +3111,9 @@ export default function Home() {
     /* a monster reached the ground — lose one heart, stay cheerful */
     const loseHeart = (m: Monster) => {
       g.hearts--
+      g.streak = 0 // Reset pop streak on mistake
+      if (!g.frenzyActive) g.frenzyMeter = Math.max(0, g.frenzyMeter - 25)
+      syncHud()
       g.player.surprised = 1.2 // 😮 "uh-oh!" face for a moment
       setHurtKey((k) => k + 1)
       audio.oops()
@@ -3378,6 +3449,40 @@ export default function Home() {
       }
       updateParticles(g, g.state === 'paused' ? 0 : dt)
       if (g.state !== 'playing') return
+
+      /* ⚡ FRENZY BUBBLE RUSH DURATION & RAINBOW TRAIL */
+      if (g.frenzyActive) {
+        g.frenzyTimer -= dt
+        g.frenzyMeter = Math.max(0, (g.frenzyTimer / 6) * 100)
+        // Spawn energetic rainbow sparkles around the player
+        if (Math.random() < 0.65) {
+          g.parts.push({
+            x: g.player.x + rand(-35, 35),
+            y: g.h - 96 + rand(-20, 20),
+            vx: rand(-60, 60),
+            vy: rand(-90, -20),
+            life: rand(0.3, 0.6),
+            maxLife: 0.6,
+            color: pick(COLORS.confetti),
+            size: rand(3, 6),
+            rot: 0,
+            vr: rand(-6, 6),
+            kind: 'sparkle',
+          })
+        }
+        if (g.frenzyTimer <= 0) {
+          g.frenzyActive = false
+          g.frenzyMeter = 0
+          addText(g, g.player.x, g.h - 140, 'Rush Finished!', '#38bdf8', 18)
+          syncHud()
+        }
+      } else {
+        // Slow gentle meter decay if player is idle for too long
+        if (g.frenzyMeter > 0) {
+          g.frenzyMeter = Math.max(0, g.frenzyMeter - dt * 4.5)
+        }
+      }
+
       showNextIntro() // any "Meet a new friend!" pop-ups waiting their turn?
 
       /* ── player movement & grown-ups fixed turret aiming ── */
@@ -3587,6 +3692,8 @@ export default function Home() {
             addText(g, p.x, g.h - 140, 'Shield saved you!', '#38bdf8', 20)
           } else {
             g.hearts--
+            g.streak = 0
+            if (!g.frenzyActive) g.frenzyMeter = Math.max(0, g.frenzyMeter - 25)
             g.player.surprised = 1.0
             setHurtKey((k) => (k + 1) % 1000)
             audio.oops()
@@ -3775,6 +3882,28 @@ export default function Home() {
               g.score++
               persistStars(g.score)
               audio.popFor(g.character) // your pal's own happy pop!
+
+              // ⚡ Increment streak and Frenzy Meter
+              g.streak++
+              if (g.streak % 3 === 0 && g.streak >= 3) {
+                const comboMsg = g.streak >= 9 ? `🔥 ${g.streak}x MEGA STREAK! 🔥` : g.streak >= 6 ? `⚡ ${g.streak}x SUPER STREAK! ⚡` : `⭐ ${g.streak}x COMBO! ⭐`
+                addText(g, m.x, m.y - 30, comboMsg, '#ffd93d', 19)
+              }
+
+              if (!g.frenzyActive) {
+                // Each pop grants +12% meter (+18% in kids mode)
+                const gain = g.mode === 'kids' ? 18 : 13
+                g.frenzyMeter = Math.min(100, g.frenzyMeter + gain)
+                if (g.frenzyMeter >= 100) {
+                  g.frenzyActive = true
+                  g.frenzyTimer = 6.0 // 6 seconds of ecstasy!
+                  fireworks(g)
+                  audio.frenzyStart()
+                  addText(g, g.w / 2, g.h * 0.42, '⚡ BUBBLE RUSH ACTIVATED! ⚡', '#ff007f', 28)
+                  addText(g, g.w / 2, g.h * 0.42 + 32, '🌈 UNLIMITED RAINBOW SHOTS! 🌈', '#ffd93d', 20)
+                }
+              }
+              syncHud()
               // sometimes a happy little bonus star tumbles out! ⭐
               if (Math.random() < PU.starChance) {
                 g.starDrops.push({ x: m.x, y: m.y, vx: rand(-50, 50), vy: -90, rot: rand(0, 6), vr: rand(-5, 5), alpha: 1 })
@@ -4200,6 +4329,10 @@ export default function Home() {
         @keyframes wiggle-kf { 0%,100% { transform: rotate(-4deg) } 50% { transform: rotate(4deg) } }
         .wiggle { animation: wiggle-kf 1.2s ease-in-out infinite }
         @keyframes ring-drain-kf { from { stroke-dashoffset: 0 } to { stroke-dashoffset: 163.4 } }
+        @keyframes rainbow-pulse { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(360deg); } }
+        @keyframes frenzy-shake { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+        .frenzy-glow { animation: rainbow-pulse 2s linear infinite; }
+        .frenzy-active-badge { animation: frenzy-shake 0.45s ease-in-out infinite, rainbow-pulse 2s linear infinite; }
       `}</style>
 
       {/* ════════ THE GAME WORLD ════════ */}
@@ -4279,6 +4412,33 @@ export default function Home() {
               {Math.min(hud.popped, goal)} / {goal} popped
             </div>
           )}
+
+          {/* ⚡ FRENZY / BUBBLE RUSH METER */}
+          <div className="mt-2 flex flex-col items-center pt-1 border-t border-amber-100">
+            <div className="flex items-center justify-between w-full px-0.5 text-[10px] font-black">
+              <span className={hud.frenzyActive ? 'text-rose-600 frenzy-active-badge' : 'text-amber-600'}>
+                {hud.frenzyActive ? '⚡ BUBBLE RUSH!' : '⚡ FRENZY'}
+              </span>
+              <span className={hud.frenzyActive ? 'text-rose-600 font-extrabold' : 'text-amber-500'}>
+                {hud.frenzyActive ? 'MAX!' : `${hud.frenzyMeter}%`}
+              </span>
+            </div>
+            <div className="mt-0.5 h-2 w-full overflow-hidden rounded-full bg-slate-100 ring-1 ring-amber-200">
+              <div
+                className={`h-full rounded-full transition-all duration-150 ${
+                  hud.frenzyActive
+                    ? 'bg-gradient-to-r from-red-500 via-amber-400 via-emerald-400 to-indigo-500 frenzy-glow'
+                    : 'bg-gradient-to-r from-amber-300 via-orange-400 to-rose-500'
+                }`}
+                style={{ width: `${Math.min(100, Math.max(0, hud.frenzyMeter))}%` }}
+              />
+            </div>
+            {hud.streak >= 3 && !hud.frenzyActive && (
+              <span className="mt-0.5 text-[9px] font-black text-rose-500 animate-pulse">
+                {hud.streak}x Combo Streak! 🔥
+              </span>
+            )}
+          </div>
         </div>
 
         {/* ── HUD: score + mute + pause buttons (top-right, always tappable) ── */}
