@@ -483,6 +483,7 @@ interface Monster {
   settled: boolean // boss: has it reached its comfy hover spot yet?
   targetY: number // boss: the height it hovers at
   shootT?: number // countdown to firing an enemy star
+  nearMissed?: boolean // true if already triggered close-call adrenaline rush
 }
 
 interface Shot {
@@ -510,7 +511,7 @@ interface Particle {
   size: number
   rot: number
   vr: number
-  kind: 'confetti' | 'sparkle' | 'ring' | 'text'
+  kind: 'confetti' | 'sparkle' | 'ring' | 'text' | 'ghost'
   text?: string
 }
 
@@ -542,6 +543,7 @@ interface EnemyStar {
   rot: number
   vr: number
   color: string
+  nearMissed?: boolean // true if already triggered close-call adrenaline rush
 }
 
 /* ⭐ a tiny bonus star that tumbles out of a popped friend */
@@ -620,6 +622,13 @@ interface GameData {
   frenzyActive: boolean // true during the 6-second Super Pop Rush
   frenzyTimer: number // remaining duration of frenzy
   streak: number // current consecutive pop streak
+  shake: number // screen shake intensity in pixels
+  hitStop: number // micro freeze duration in seconds
+  bulletTime: number // matrix slow-mo timer in seconds
+  dashCooldown: number // cooldown in seconds before next dash
+  dashInvuln: number // i-frame duration in seconds
+  decayMultiplier: number // rush combo multiplier (1.0 to 3.5x)
+  decayTimer: number // remaining time before rush multiplier decays
 }
 
 function freshGame(): GameData {
@@ -689,6 +698,13 @@ function freshGame(): GameData {
     frenzyActive: false,
     frenzyTimer: 0,
     streak: 0,
+    shake: 0,
+    hitStop: 0,
+    bulletTime: 0,
+    dashCooldown: 0,
+    dashInvuln: 0,
+    decayMultiplier: 1.0,
+    decayTimer: 0,
   }
 }
 
@@ -964,6 +980,33 @@ class GameAudio {
     this.tone({ freq: this.f(64), time: t, dur: 0.22, type: 'triangle', vol: 0.16 })
     this.tone({ freq: this.f(60), time: t + 0.2, dur: 0.22, type: 'triangle', vol: 0.16 })
     this.tone({ freq: this.f(57), time: t + 0.42, dur: 0.5, type: 'triangle', vol: 0.16 })
+  }
+
+  /* ⚡ Slow-mo whoosh sound when narrowly dodging a hazard */
+  nearMiss() {
+    this.init()
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    this.tone({ freq: 880, time: t, dur: 0.24, type: 'sine', vol: 0.22, glide: 240 })
+    this.tone({ freq: 1320, time: t + 0.04, dur: 0.16, type: 'triangle', vol: 0.16, glide: 440 })
+  }
+
+  /* 💨 High-speed Phase Dash whoosh */
+  dash() {
+    this.init()
+    if (!this.ctx) return
+    const t = this.ctx.currentTime
+    this.tone({ freq: 360, time: t, dur: 0.14, type: 'sine', vol: 0.26, glide: 1100 })
+    this.tone({ freq: 720, time: t + 0.03, dur: 0.12, type: 'triangle', vol: 0.18, glide: 1500 })
+  }
+
+  /* 🚨 Accelerate music BPM when boss is critical or player has 1 heart */
+  setClimax(active: boolean) {
+    if (active) {
+      this.stepDur = 0.185 // ~162 BPM adrenaline rush tempo
+    } else {
+      this.stepDur = 0.23 // standard lively tempo
+    }
   }
 
   /* ── MUSIC LOOP 🎵 — a bouncy 8-bar tune that repeats forever ────────
@@ -1293,6 +1336,21 @@ function drawPlayer(ctx: CanvasRenderingContext2D, g: GameData) {
     ctx.lineCap = 'round'
     ctx.beginPath()
     ctx.arc(0, 0, pr - 7, -2.2, -1.4)
+    ctx.stroke()
+    ctx.restore()
+  }
+  // ⚡ Phase Dash Invulnerability Aura
+  if (g.dashInvuln > 0) {
+    const pulse = Math.sin(g.time * 28) * 0.5 + 0.5
+    ctx.save()
+    ctx.translate(p.x, py)
+    ctx.beginPath()
+    ctx.arc(0, 0, 48, 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(56, 189, 248, ${0.25 * pulse})`
+    ctx.fill()
+    ctx.strokeStyle = '#38bdf8'
+    ctx.lineWidth = 2.5
+    ctx.setLineDash([6, 4])
     ctx.stroke()
     ctx.restore()
   }
@@ -2465,6 +2523,16 @@ function drawParticles(ctx: CanvasRenderingContext2D, g: GameData) {
       ctx.beginPath()
       ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2)
       ctx.stroke()
+    } else if (p.kind === 'ghost') {
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.rotate(p.rot)
+      ctx.scale(0.85, 0.85)
+      ctx.fillStyle = p.color || 'rgba(56, 189, 248, 0.5)'
+      ctx.beginPath()
+      ctx.arc(0, 0, p.size, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
     } else if (p.kind === 'text' && p.text) {
       ctx.font = `bold ${p.size || 22}px ${FONT}`
       ctx.textAlign = 'center'
@@ -2534,6 +2602,12 @@ function drawAimArrow(ctx: CanvasRenderingContext2D, g: GameData) {
 }
 
 function render(ctx: CanvasRenderingContext2D, g: GameData) {
+  ctx.save()
+  if (g.shake > 0) {
+    const sx = (Math.random() - 0.5) * g.shake * 2
+    const sy = (Math.random() - 0.5) * g.shake * 2
+    ctx.translate(sx, sy)
+  }
   drawBackground(ctx, g)
   for (const st of g.starDrops) drawStarDrop(ctx, st)
   for (const es of g.enemyStars) drawEnemyStar(ctx, es)
@@ -2543,6 +2617,8 @@ function render(ctx: CanvasRenderingContext2D, g: GameData) {
   drawPlayer(ctx, g)
   // drawAimArrow(ctx, g) - arrow completely removed
   drawParticles(ctx, g)
+  ctx.restore()
+
   // ⚡ Frenzy Bubble Rush — vibrant rainbow energetic edge aura!
   if (g.frenzyActive) {
     const aura = ctx.createRadialGradient(g.w / 2, g.h / 2, g.h * 0.2, g.w / 2, g.h / 2, g.h * 0.75)
@@ -2551,6 +2627,24 @@ function render(ctx: CanvasRenderingContext2D, g: GameData) {
     aura.addColorStop(0.85, `hsla(${hue}, 100%, 75%, 0.18)`)
     aura.addColorStop(1, `hsla(${(hue + 60) % 360}, 100%, 65%, 0.35)`)
     ctx.fillStyle = aura
+    ctx.fillRect(0, 0, g.w, g.h)
+  }
+
+  // ⚡ Bullet Time / Slow-Mo Matrix Vignette
+  if (g.bulletTime > 0) {
+    const alpha = Math.min(0.28, g.bulletTime)
+    ctx.fillStyle = `rgba(14, 165, 233, ${alpha})`
+    ctx.fillRect(0, 0, g.w, g.h)
+  }
+
+  // 🚨 Danger Low-HP Heartbeat Pulse Vignette (1 heart remaining)
+  if (g.hearts === 1 && g.state === 'playing') {
+    const pulse = Math.sin(g.time * 8) * 0.5 + 0.5
+    const dangerGrad = ctx.createRadialGradient(g.w / 2, g.h / 2, g.h * 0.28, g.w / 2, g.h / 2, g.h * 0.78)
+    dangerGrad.addColorStop(0, 'rgba(255, 0, 0, 0)')
+    dangerGrad.addColorStop(0.7, `rgba(220, 20, 60, ${0.14 * pulse})`)
+    dangerGrad.addColorStop(1, `rgba(180, 0, 30, ${0.42 * pulse})`)
+    ctx.fillStyle = dangerGrad
     ctx.fillRect(0, 0, g.w, g.h)
   }
 
@@ -2620,6 +2714,7 @@ export default function Home() {
     toggleMute: () => void
     toMenu: () => void
     bye: () => void
+    triggerDash: (dir?: number) => void
   } | null>(null)
 
   // React state = only the pretty HUD & overlay screens (the game itself
@@ -2643,6 +2738,9 @@ export default function Home() {
     frenzyMeter: 0,
     frenzyActive: false,
     streak: 0,
+    decayMultiplier: 1.0,
+    decayTimer: 0,
+    dashCooldown: 0,
   })
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
@@ -2721,9 +2819,12 @@ export default function Home() {
         const powerType = g.active?.type ?? null
         const powerStamp = g.active?.startedAt ?? 0
         const fMeter = Math.round(g.frenzyMeter)
-        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode && prev.character === g.character && prev.bossActive === bossActive && prev.shield === g.shield && prev.powerType === powerType && prev.powerStamp === powerStamp && prev.frenzyMeter === fMeter && prev.frenzyActive === g.frenzyActive && prev.streak === g.streak)
+        const dMul = Number(g.decayMultiplier.toFixed(1))
+        const dTimer = Number(g.decayTimer.toFixed(1))
+        const dCooldown = Number(g.dashCooldown.toFixed(1))
+        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode && prev.character === g.character && prev.bossActive === bossActive && prev.shield === g.shield && prev.powerType === powerType && prev.powerStamp === powerStamp && prev.frenzyMeter === fMeter && prev.frenzyActive === g.frenzyActive && prev.streak === g.streak && prev.decayMultiplier === dMul && prev.decayTimer === dTimer && prev.dashCooldown === dCooldown)
           return prev
-        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode, character: g.character, bossActive, shield: g.shield, powerType, powerStamp, frenzyMeter: fMeter, frenzyActive: g.frenzyActive, streak: g.streak }
+        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode, character: g.character, bossActive, shield: g.shield, powerType, powerStamp, frenzyMeter: fMeter, frenzyActive: g.frenzyActive, streak: g.streak, decayMultiplier: dMul, decayTimer: dTimer, dashCooldown: dCooldown }
       })
     }
 
@@ -2870,6 +2971,41 @@ export default function Home() {
       audio.shoot()
     }
 
+    /* ⚡ Phase Dash / Reflex Dodge — sudden warp burst with invulnerability frames */
+    const triggerDash = (dir?: number) => {
+      if (g.state !== 'playing' || g.dashCooldown > 0) return
+      const p = g.player
+      const d = dir ?? (keys.left ? -1 : keys.right ? 1 : p.tilt < -0.05 ? -1 : p.tilt > 0.05 ? 1 : 1)
+      const dashDist = 135 * d
+      const newX = clamp(p.x + dashDist, 45, g.w - 45)
+
+      // Spawn ghost trail after-images
+      for (let step = 0; step <= 3; step++) {
+        const t = step / 3
+        g.parts.push({
+          x: lerp(p.x, newX, t),
+          y: g.h - 96,
+          vx: 0,
+          vy: 0,
+          life: 0.24 - step * 0.04,
+          maxLife: 0.24,
+          color: 'rgba(56, 189, 248, 0.65)',
+          size: 30,
+          rot: p.tilt,
+          vr: 0,
+          kind: 'ghost',
+        })
+      }
+
+      p.x = newX
+      g.dashCooldown = 1.1
+      g.dashInvuln = 0.22
+      g.shake = Math.max(g.shake, 4)
+      audio.dash()
+      addText(g, p.x, g.h - 130, '⚡ DASH!', '#38bdf8', 19)
+      syncHud()
+    }
+
     /* start a (new) level with a cheerful GO! banner */
     const beginLevel = () => {
       g.popped = 0
@@ -2891,6 +3027,13 @@ export default function Home() {
       g.frenzyActive = false
       g.frenzyTimer = 0
       g.streak = 0
+      g.shake = 0
+      g.hitStop = 0
+      g.bulletTime = 0
+      g.dashCooldown = 0
+      g.dashInvuln = 0
+      g.decayMultiplier = 1.0
+      g.decayTimer = 0
       g.targetX = null
       g.targetY = null
       // Apply pre-level booster if bought
@@ -3112,6 +3255,9 @@ export default function Home() {
     const loseHeart = (m: Monster) => {
       g.hearts--
       g.streak = 0 // Reset pop streak on mistake
+      g.shake = 16 // screen shake!
+      g.decayMultiplier = 1.0
+      g.decayTimer = 0
       if (!g.frenzyActive) g.frenzyMeter = Math.max(0, g.frenzyMeter - 25)
       syncHud()
       g.player.surprised = 1.2 // 😮 "uh-oh!" face for a moment
@@ -3181,6 +3327,7 @@ export default function Home() {
       const m = g.monsters[j]
       const b = BOSSES[Math.min(BOSSES.length - 1, m.boss)]
       g.monsters.splice(j, 1)
+      g.shake = 22 // massive boss explosion shake
       burst(g, m.x, m.y, m.color)
       fireworks(g)
       g.score += b.bonus
@@ -3301,6 +3448,7 @@ export default function Home() {
        past the level's big pal!) */
     const giantBurst = (gx: number, gy: number) => {
       audio.giantPop()
+      g.shake = 16
       fireworks(g)
       addText(g, gx, gy, 'GIANT POP!', '#b18aff', 30)
       for (let j = g.monsters.length - 1; j >= 0; j--) {
@@ -3483,6 +3631,27 @@ export default function Home() {
         }
       }
 
+      // ⚡ Adrenaline screen shake & dash timer decay
+      if (g.shake > 0) g.shake = Math.max(0, g.shake - dt * 32)
+      if (g.dashCooldown > 0) g.dashCooldown = Math.max(0, g.dashCooldown - dt)
+      if (g.dashInvuln > 0) g.dashInvuln = Math.max(0, g.dashInvuln - dt)
+
+      // ⏱️ Time-Attack Rush Multiplier decay
+      if (g.decayTimer > 0) {
+        g.decayTimer -= dt
+        if (g.decayTimer <= 0) {
+          g.decayTimer = 0
+        }
+      } else if (g.decayMultiplier > 1.0) {
+        g.decayMultiplier = Math.max(1.0, g.decayMultiplier - dt * 0.75)
+      }
+
+      // 🚨 Climax music tempo escalation (boss low HP or 1 heart or frenzy)
+      const bossEnemy = g.monsters.find((m) => m.boss >= 0)
+      const bossCritical = bossEnemy && bossEnemy.hp / bossEnemy.maxHp <= 0.35
+      const dangerHearts = g.hearts === 1
+      audio.setClimax(Boolean(bossCritical || dangerHearts || g.frenzyActive))
+
       showNextIntro() // any "Meet a new friend!" pop-ups waiting their turn?
 
       /* ── player movement & grown-ups fixed turret aiming ── */
@@ -3599,10 +3768,33 @@ export default function Home() {
             m.y += fall * m.speedMul * slowF * dt
             m.x = clamp(m.baseX + Math.sin(m.wob * 0.8) * m.drift * 0.7, m.r, g.w - m.r)
             break
-          case 'dive': // Darting Dragonfly: hovers then dives
-            m.y += fall * m.speedMul * slowF * dt * (1 + Math.sin(g.et * 4) * 0.4)
-            m.x = clamp(m.baseX + Math.cos(m.wob) * m.drift, m.r, g.w - m.r)
+          case 'dive': { // Darting Dragonfly: hovers then telegraphs and dives toward player X!
+            const divePhase = Math.sin(m.wob * 2.6)
+            if (divePhase > 0.35 && m.y > 60 && m.y < palY - 40) {
+              const toPlayerX = p.x - m.x
+              m.x += clamp(toPlayerX * 3.5 * dt, -260 * dt, 260 * dt)
+              m.y += fall * m.speedMul * slowF * dt * 2.3
+              if (Math.random() < 0.35) {
+                g.parts.push({
+                  x: m.x + rand(-6, 6),
+                  y: m.y - m.r,
+                  vx: rand(-20, 20),
+                  vy: -rand(30, 80),
+                  life: 0.2,
+                  maxLife: 0.2,
+                  color: '#fb7185',
+                  size: rand(2, 4),
+                  rot: 0,
+                  vr: 1,
+                  kind: 'sparkle',
+                })
+              }
+            } else {
+              m.y += fall * m.speedMul * slowF * dt * 0.75
+              m.x = clamp(m.baseX + Math.cos(m.wob) * m.drift, m.r, g.w - m.r)
+            }
             break
+          }
           case 'armored': // Armored Armadillo: heavy downward roll
             m.y += fall * m.speedMul * slowF * dt
             m.x = clamp(m.baseX + Math.sin(m.wob * 0.5) * m.drift * 0.3, m.r, g.w - m.r)
@@ -3615,6 +3807,21 @@ export default function Home() {
             m.y += fall * m.speedMul * slowF * dt
             m.x = clamp(m.baseX + Math.sin(Math.floor(g.et * 1.2)) * (g.w * 0.25), m.r, g.w - m.r)
             break
+        }
+
+        // ⚡ Near-miss check for aggressive diving enemies
+        if (m.move === 'dive' && !m.nearMissed && m.y > palY - 80 && m.y < palY + 20) {
+          const mdx = p.x - m.x
+          const mdy = palY - 14 - m.y
+          const mdistSq = mdx * mdx + mdy * mdy
+          if (mdistSq >= 38 * 38 && mdistSq < 78 * 78) {
+            m.nearMissed = true
+            g.bulletTime = 0.35
+            g.shake = 6
+            g.frenzyMeter = Math.min(100, g.frenzyMeter + 20)
+            audio.nearMiss()
+            addText(g, p.x, palY - 45, '⚡ DIVE DODGE! +20% RUSH', '#f59e0b', 20)
+          }
         }
 
         if (m.y - m.r > g.h - 14) {
@@ -3684,8 +3891,18 @@ export default function Home() {
         // Check collision with player character
         const dx = p.x - es.x
         const dy = (palY - 14) - es.y
-        if (dx * dx + dy * dy < 36 * 36) {
+        const distSq = dx * dx + dy * dy
+
+        if (distSq < 36 * 36) {
+          if (g.dashInvuln > 0) {
+            // Dodged through projectile with Phase Dash!
+            g.enemyStars.splice(i, 1)
+            audio.nearMiss()
+            addText(g, p.x, palY - 45, '💨 DODGED!', '#38bdf8', 20)
+            continue
+          }
           g.enemyStars.splice(i, 1)
+          g.shake = 16
           if (g.shield) {
             g.shield = false
             audio.shieldPop()
@@ -3693,6 +3910,8 @@ export default function Home() {
           } else {
             g.hearts--
             g.streak = 0
+            g.decayMultiplier = 1.0
+            g.decayTimer = 0
             if (!g.frenzyActive) g.frenzyMeter = Math.max(0, g.frenzyMeter - 25)
             g.player.surprised = 1.0
             setHurtKey((k) => (k + 1) % 1000)
@@ -3713,6 +3932,31 @@ export default function Home() {
           }
           syncHud()
           continue
+        }
+
+        // ⚡ Near-Miss Danger Zone & Slow-Mo Bullet Time
+        if (!es.nearMissed && distSq >= 36 * 36 && distSq < 72 * 72 && !g.dashInvuln) {
+          es.nearMissed = true
+          g.bulletTime = 0.35
+          g.shake = 5
+          g.frenzyMeter = Math.min(100, g.frenzyMeter + 20)
+          audio.nearMiss()
+          addText(g, p.x, palY - 45, '⚡ NEAR MISS! +20% RUSH', '#f59e0b', 20)
+          for (let k = 0; k < 5; k++) {
+            g.parts.push({
+              x: es.x,
+              y: es.y,
+              vx: rand(-60, 60),
+              vy: rand(-60, 60),
+              life: 0.32,
+              maxLife: 0.32,
+              color: '#38bdf8',
+              size: rand(3, 5),
+              rot: 0,
+              vr: 2,
+              kind: 'sparkle',
+            })
+          }
         }
 
         // Clean removal
@@ -3869,6 +4113,8 @@ export default function Home() {
             if (m.boss >= 0) {
               /* 👑 booping the big boss! */
               audio.bossHit()
+              g.shake = 8
+              g.hitStop = 0.05
               g.score++
               persistStars(g.score)
               addText(g, m.x + rand(-20, 20), m.y - m.r * 0.4, pick(['Boing!', 'Boop!', 'Pop!']), '#f278ab', 20)
@@ -3882,6 +4128,47 @@ export default function Home() {
               g.score++
               persistStars(g.score)
               audio.popFor(g.character) // your pal's own happy pop!
+
+              // ⏱️ Adrenaline Decaying Rush Multiplier
+              g.decayTimer = 2.6
+              g.decayMultiplier = Math.min(3.5, Number((g.decayMultiplier + 0.25).toFixed(2)))
+              const bonusStars = Math.floor(g.decayMultiplier) - 1
+              if (bonusStars > 0) {
+                g.score += bonusStars
+                persistStars(g.score)
+                addText(g, m.x + 28, m.y - m.r * 0.4 - 24, `+${bonusStars}⭐ RUSH!`, '#f59e0b', 15)
+              }
+
+              // 🦠 Splitting Cluster Enemy (Mitosis Mite)
+              if (m.type === 'mitosis' && m.r > 20) {
+                for (const dir of [-1, 1]) {
+                  g.monsters.push({
+                    id: g.nextMonsterId++,
+                    x: clamp(m.x + dir * 22, 30, g.w - 30),
+                    y: m.y - 12,
+                    baseX: m.x + dir * 28,
+                    r: m.r * 0.65,
+                    color: m.color,
+                    type: 'mitosis',
+                    move: 'bounce',
+                    boss: -1,
+                    hp: 1,
+                    maxHp: 1,
+                    wob: rand(0, Math.PI * 2),
+                    wobSpeed: 6,
+                    drift: 28,
+                    speedMul: 1.35,
+                    blink: 2,
+                    vx: dir * rand(90, 160),
+                    alpha: 1,
+                    hitFlash: 0,
+                    spin: 0,
+                    settled: true,
+                    targetY: 0,
+                  })
+                }
+                addText(g, m.x, m.y - 20, '💥 SPLIT!', '#a855f7', 18)
+              }
 
               // ⚡ Increment streak and Frenzy Meter
               g.streak++
@@ -3999,11 +4286,26 @@ export default function Home() {
     }
 
     /* ── keyboard controls ── */
-    const gameKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Spacebar']
+    let lastLeftTap = 0
+    let lastRightTap = 0
+    const gameKeys = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' ', 'Spacebar', 'Shift']
     const onKeyDown = (e: KeyboardEvent) => {
       if (gameKeys.includes(e.key)) e.preventDefault() // stop the page from scrolling
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = true
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = true
+      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        const now = performance.now()
+        if (now - lastLeftTap < 280) triggerDash(-1)
+        lastLeftTap = now
+        keys.left = true
+      }
+      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        const now = performance.now()
+        if (now - lastRightTap < 280) triggerDash(1)
+        lastRightTap = now
+        keys.right = true
+      }
+      if (e.key === 'Shift') {
+        triggerDash()
+      }
       if (e.key === ' ' || e.key === 'Spacebar' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         keys.shoot = true
         audio.init()
@@ -4265,7 +4567,7 @@ export default function Home() {
       syncHud()
     }
 
-    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, pullGachapon, toggleVFX, buySecretPal, buyIslandToy, unlockZenMode, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye }
+    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, pullGachapon, toggleVFX, buySecretPal, buyIslandToy, unlockZenMode, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye, triggerDash }
 
     /* ── go! ── */
     let raf = 0
@@ -4273,8 +4575,22 @@ export default function Home() {
     const loop = (now: number) => {
       const rawDt = (now - last) / 1000
       last = now
+
+      // ⏱️ Hit-stop tactile micro freeze
+      if (g.hitStop > 0) {
+        g.hitStop = Math.max(0, g.hitStop - rawDt)
+        render(ctx, g)
+        raf = requestAnimationFrame(loop)
+        return
+      }
+
       // Ignore huge delta spikes (e.g. background tab or system pause)
-      const dt = Math.min(0.05, Math.max(0.001, rawDt))
+      let dt = Math.min(0.05, Math.max(0.001, rawDt))
+      if (g.bulletTime > 0) {
+        g.bulletTime = Math.max(0, g.bulletTime - rawDt)
+        dt *= 0.26 // Matrix slow-motion!
+      }
+
       try {
         if (g.state === 'paused') {
           render(ctx, g)
@@ -4438,6 +4754,12 @@ export default function Home() {
                 {hud.streak}x Combo Streak! 🔥
               </span>
             )}
+            {hud.decayMultiplier > 1.0 && (
+              <div className="mt-1 flex items-center justify-between w-full px-0.5 text-[9px] font-black text-amber-600">
+                <span className="animate-pulse">🔥 {hud.decayMultiplier.toFixed(1)}x RUSH</span>
+                <span className="text-amber-500 font-bold">{hud.decayTimer.toFixed(1)}s</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -4518,8 +4840,31 @@ export default function Home() {
 
         {/* tiny desktop hint */}
         <div className="pointer-events-none absolute bottom-2 left-3 z-10 hidden text-xs font-bold text-slate-600/70 sm:block">
-          ← → move · space = pop!
+          ← → move · space = pop · shift / double-tap = dash ⚡
         </div>
+
+        {/* ⚡ Mobile & Desktop Phase Dash Button */}
+        {ui === 'playing' && (
+          <button
+            onClick={(e) => {
+              e.currentTarget.blur()
+              controlsRef.current?.triggerDash()
+            }}
+            disabled={hud.dashCooldown > 0}
+            className={`absolute bottom-4 right-4 z-30 flex h-14 w-14 sm:h-16 sm:w-16 flex-col items-center justify-center rounded-full font-black shadow-lg transition active:scale-90 ${
+              hud.dashCooldown > 0
+                ? 'bg-slate-700/60 text-slate-300 ring-2 ring-slate-400 cursor-not-allowed opacity-75'
+                : 'bg-gradient-to-r from-sky-400 to-blue-500 text-white ring-4 ring-sky-300/80 hover:brightness-110'
+            }`}
+            title="Phase Dash (Shift / Double-Tap)"
+            aria-label="Phase Dash"
+          >
+            <span className="text-xl sm:text-2xl leading-none">⚡</span>
+            <span className="text-[10px] font-black uppercase leading-none mt-0.5">
+              {hud.dashCooldown > 0 ? `${hud.dashCooldown.toFixed(1)}s` : 'Dash'}
+            </span>
+          </button>
+        )}
 
                 
         {/* ════════ OVERLAY: ⭐ STAR BAZAAR & TOY SHOP ════════ */}
