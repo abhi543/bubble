@@ -861,6 +861,64 @@ const bossHpOf = (g: GameData, b: BossConfig) => {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   📳 HAPTIC ENGINE — Web Vibration API tactile clicks & rumbles for mobile
+   ═══════════════════════════════════════════════════════════════════════ */
+class GameHaptics {
+  enabled = true
+
+  vibrate(pattern: number | number[]) {
+    if (!this.enabled) return
+    if (typeof window !== 'undefined' && 'navigator' in window && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(pattern)
+      } catch {
+        /* safely ignore browser permission or platform blocks */
+      }
+    }
+  }
+
+  // Tactile click on normal bubble pop
+  pop() {
+    this.vibrate(12)
+  }
+
+  // Double tactile buzz on phase dash
+  dash() {
+    this.vibrate([15, 30, 20])
+  }
+
+  // Near miss close-call reflex buzz
+  nearMiss() {
+    this.vibrate([18, 25, 22])
+  }
+
+  // Heavy tactile thud on boss hit
+  bossHit() {
+    this.vibrate([35, 20, 30])
+  }
+
+  // Boss phase shift or boss defeated
+  bossPhase() {
+    this.vibrate([45, 30, 60])
+  }
+
+  // Cinematic rumble on Ultimate Super Move or K.O. Finisher or Giant Pop
+  ultimate() {
+    this.vibrate([60, 40, 80, 50, 110])
+  }
+
+  // Alert buzz on losing a heart
+  hurt() {
+    this.vibrate([45, 60, 45])
+  }
+
+  // Joyful celebration jingle rumble on level/wave clear
+  celebrate() {
+    this.vibrate([25, 35, 30, 40, 50])
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    🔊 SOUND ENGINE — every beep is generated with the Web Audio API,
    so there are no sound files to download. Tweak the numbers freely!
    ═══════════════════════════════════════════════════════════════════════ */
@@ -2917,6 +2975,7 @@ export default function Home() {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const gRef = useRef<GameData | null>(null)
   const audioRef = useRef<GameAudio | null>(null)
+  const hapticsRef = useRef<GameHaptics | null>(null)
   const controlsRef = useRef<{
     startGame: (chosenLevel?: number) => void
     startLevel: (levelIndex: number) => void
@@ -3022,10 +3081,14 @@ export default function Home() {
       } catch {}
     }, 0)
     // Debug handle for curious grown-ups: open the browser console and type
-    // __bubbleGame to peek at (or tweak!) the live game state.
+    // __bubbleGame or __bubbleHaptics to peek at (or tweak!) the live game state.
     if (typeof window !== 'undefined') (window as unknown as { __bubbleGame: GameData }).__bubbleGame = g
     const audio = new GameAudio()
     audioRef.current = audio
+    const haptics = new GameHaptics()
+    hapticsRef.current = haptics
+    haptics.enabled = !audio.muted
+    if (typeof window !== 'undefined') (window as unknown as { __bubbleHaptics: GameHaptics }).__bubbleHaptics = haptics
     const keys = { left: false, right: false, shoot: false }
     const drag = { active: false, id: -1, startX: 0, t0: 0, moved: false }
 
@@ -3311,6 +3374,7 @@ export default function Home() {
       g.dashInvuln = 0.22
       g.shake = Math.max(g.shake, 4)
       audio.dash()
+      haptics.dash()
       addText(g, p.x, g.h - 130, '⚡ DASH!', '#38bdf8', 19)
       syncHud()
     }
@@ -3322,6 +3386,7 @@ export default function Home() {
       g.shake = 22
       audio.giantPop()
       audio.frenzyStart()
+      haptics.ultimate()
 
       const c = CHARACTERS[g.character]
       const palY = g.h - 96
@@ -3614,6 +3679,7 @@ export default function Home() {
       g.monsters.length = 0
       g.bossSpawned = false
       audio.levelUp()
+      haptics.celebrate()
       g.shake = 10
       // Pick 3 random distinct perks from ALL_PERKS
       const pool = [...ALL_PERKS]
@@ -3644,6 +3710,7 @@ export default function Home() {
 
       audio.newFriend()
       audio.pop()
+      haptics.pop()
       g.shake = 12
       addText(g, g.w / 2, g.h * 0.45, `+ ${perk.name}! ⚡`, '#ffd93d', 30)
 
@@ -3785,10 +3852,12 @@ export default function Home() {
         setUi('won')
         audio.stopMusic()
         audio.win()
+        haptics.celebrate()
       } else {
         g.state = 'levelClear'
         setUi('levelClear')
         audio.levelUp()
+        haptics.celebrate()
       }
       syncHud()
     }
@@ -3805,6 +3874,7 @@ export default function Home() {
       g.player.surprised = 1.2 // 😮 "uh-oh!" face for a moment
       setHurtKey((k) => k + 1)
       audio.oops()
+      haptics.hurt()
       addText(g, clamp(m.x, 60, g.w - 60), g.h - 150, 'Oops!', '#ff8fb1')
 
       // 🧒 KIDS MODE SAFETY NET: The "No Game Over" Bubble Rescue
@@ -3884,6 +3954,7 @@ export default function Home() {
       addText(g, m.x, m.y - 82, 'VICTORY POP! 🎆', '#ff007f', 36)
       audio.bossDown()
       audio.giantPop()
+      haptics.bossPhase()
       completeLevel()
     }
 
@@ -3892,6 +3963,7 @@ export default function Home() {
       g.score += PU.starValue
       persistStars(g.score)
       audio.pop()
+      haptics.pop()
       addText(g, st.x, st.y - 8, `+${PU.starValue}⭐`, '#e8a800', 17)
       for (let k = 0; k < 6; k++) {
         g.parts.push({
@@ -3942,6 +4014,7 @@ export default function Home() {
     const collectPowerUp = (type: PowerUpType, x: number, y: number) => {
       const cfg = POWERUPS[type]
       audio.powerUp()
+      haptics.pop()
       for (let i = 0; i < 10; i++) {
         g.parts.push({
           x, y,
@@ -3998,6 +4071,7 @@ export default function Home() {
        past the level's big pal!) */
     const giantBurst = (gx: number, gy: number) => {
       audio.giantPop()
+      haptics.ultimate()
       g.shake = 16
       fireworks(g)
       addText(g, gx, gy, 'GIANT POP!', '#b18aff', 30)
@@ -4450,6 +4524,7 @@ export default function Home() {
             g.shake = 6
             g.frenzyMeter = Math.min(100, g.frenzyMeter + 20)
             audio.nearMiss()
+            haptics.nearMiss()
             addText(g, p.x, palY - 45, '⚡ DIVE DODGE! +20% RUSH', '#f59e0b', 20)
 
             if (g.mode === 'endless' && g.perks?.includes('grazing')) {
@@ -4472,6 +4547,7 @@ export default function Home() {
             // 🫧 the Bubble Shield pops with a happy sound & saves the heart!
             g.shield = false
             audio.shieldPop()
+            haptics.hurt()
             addText(g, clamp(m.x, 60, g.w - 60), g.h - 140, 'Shield saved you!', '#3fa8d8', 20)
             for (let k = 0; k < 10; k++) {
               g.parts.push({
@@ -4559,6 +4635,7 @@ export default function Home() {
             // Dodged through projectile with Phase Dash!
             g.enemyStars.splice(i, 1)
             audio.nearMiss()
+            haptics.nearMiss()
             addText(g, p.x, palY - 45, '💨 DODGED!', '#38bdf8', 20)
             continue
           }
@@ -4567,6 +4644,7 @@ export default function Home() {
           if (g.shield) {
             g.shield = false
             audio.shieldPop()
+            haptics.hurt()
             addText(g, p.x, g.h - 140, 'Shield saved you!', '#38bdf8', 20)
           } else {
             g.hearts--
@@ -4577,6 +4655,7 @@ export default function Home() {
             g.player.surprised = 1.0
             setHurtKey((k) => (k + 1) % 1000)
             audio.oops()
+            haptics.hurt()
             addText(g, p.x, g.h - 150, 'Ouch! 💔', '#f43f5e', 22)
             if (g.hearts <= 0) {
               if (g.mode === 'kids') {
@@ -4608,6 +4687,7 @@ export default function Home() {
           g.shake = 5
           g.frenzyMeter = Math.min(100, g.frenzyMeter + 20)
           audio.nearMiss()
+          haptics.nearMiss()
           addText(g, p.x, palY - 45, '⚡ NEAR MISS! +20% RUSH', '#f59e0b', 20)
 
           if (g.mode === 'endless' && g.perks?.includes('grazing')) {
@@ -4792,6 +4872,7 @@ export default function Home() {
             if (m.boss >= 0) {
               /* 👑 booping the big boss! */
               audio.bossHit()
+              haptics.bossHit()
               g.shake = 8
               g.hitStop = 0.05
               g.score++
@@ -4809,6 +4890,7 @@ export default function Home() {
                 g.shake = 16
                 g.bulletTime = 0.4
                 audio.powerUp()
+                haptics.bossPhase()
                 for (let k = 0; k < 3; k++) {
                   g.parts.push({
                     x: m.x,
@@ -4838,6 +4920,7 @@ export default function Home() {
                 g.bulletTime = 1.6
                 g.shake = 12
                 audio.frenzyStart()
+                haptics.ultimate()
                 addText(g, m.x, m.y - m.r - 30, '👑 K.O.!', '#ffd93d', 34)
               }
             } else if (m.hp <= 0) {
@@ -4848,6 +4931,7 @@ export default function Home() {
               g.score++
               persistStars(g.score)
               audio.popFor(g.character) // your pal's own happy pop!
+              haptics.pop()
 
               // ⏱️ Adrenaline Decaying Rush Multiplier
               const maxMul = (g.mode === 'endless' && g.perks?.includes('adrenaline')) ? 5.0 : 3.5
@@ -5164,6 +5248,7 @@ export default function Home() {
       audio.init()
       audio.setMuted(!audio.muted)
       setMuted(audio.muted)
+      haptics.enabled = !audio.muted
       audio.click()
     }
     
