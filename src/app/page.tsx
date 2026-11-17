@@ -180,6 +180,8 @@ interface CharacterConfig {
   name: string // shown on the selection card
   emoji: string // little helper for text lines
   tagline: string // what they shoot, in kid words
+  ultName: string // signature ultimate ability name
+  ultDesc: string // what the ultimate does
   body: string // main color
   trim: string // outline / details color
   belly: string // tummy / lighter patch color
@@ -193,6 +195,8 @@ const CHARACTERS: Record<CharacterId, CharacterConfig> = {
     name: 'Rocky the Rocket',
     emoji: '🚀',
     tagline: 'shoots star bubbles',
+    ultName: 'Meteor Barrage',
+    ultDesc: 'Rains orbital piercing stars across the entire sky!',
     body: '#ff8a5c',
     trim: '#e26a3d',
     belly: '#ffd9c4',
@@ -204,6 +208,8 @@ const CHARACTERS: Record<CharacterId, CharacterConfig> = {
     name: 'Dolly the Dolphin',
     emoji: '🐬',
     tagline: 'shoots water bubbles',
+    ultName: 'Tsunami Vortex',
+    ultDesc: 'Cleanses all hazard projectiles and lifts enemies in a giant water vortex!',
     body: '#59c6ee',
     trim: '#2f9ec7',
     belly: '#cdefff',
@@ -215,6 +221,8 @@ const CHARACTERS: Record<CharacterId, CharacterConfig> = {
     name: 'Bunny Bubbles',
     emoji: '🐰',
     tagline: 'shoots heart bubbles',
+    ultName: 'Heart Blossom',
+    ultDesc: 'Freezes time, restores a heart, and blossoms hazards into bonus gifts!',
     body: '#ffb3d4',
     trim: '#f278ab',
     belly: '#ffe1ee',
@@ -226,6 +234,8 @@ const CHARACTERS: Record<CharacterId, CharacterConfig> = {
     name: 'Zippy the Robot',
     emoji: '🤖',
     tagline: 'shoots rainbow bubbles',
+    ultName: 'Laser Overload',
+    ultDesc: 'Twin hypersonic ricochet beams bounce infinitely for 4.5 seconds!',
     body: '#ffd93d',
     trim: '#e8a800',
     belly: '#fff3bf',
@@ -237,6 +247,8 @@ const CHARACTERS: Record<CharacterId, CharacterConfig> = {
     name: 'Panda Bamboo',
     emoji: '🐼',
     tagline: 'shoots clover star bubbles',
+    ultName: 'Bamboo Hurricane',
+    ultDesc: 'Whirling razor crescent blades slice through every enemy in sight!',
     body: '#ffffff',
     trim: '#1e293b',
     belly: '#f1f5f9',
@@ -248,6 +260,8 @@ const CHARACTERS: Record<CharacterId, CharacterConfig> = {
     name: 'Kitty Sparkle',
     emoji: '🐱',
     tagline: 'shoots sparkly heart bubbles',
+    ultName: 'Supernova Sparkle',
+    ultDesc: 'Radiant 360° celestial glitter explosion obliterates all hazards!',
     body: '#fed7aa',
     trim: '#ea580c',
     belly: '#ffedd5',
@@ -739,6 +753,9 @@ interface GameData {
   draftChoices: PerkCard[] // 3 perks currently offered in draft modal
   shieldPopsCount: number // counter for Kinetic Ward recharge
   endlessPopsInWave: number // counter for Heart Siphon
+  ultCharge: number // 0 to 100 percentage toward Pal Ultimate
+  laserTimer: number // active duration for Zippy's Laser Overload
+  tsunamiActive: number // active duration for Dolly's Tsunami Vortex
 }
 
 function freshGame(): GameData {
@@ -820,6 +837,9 @@ function freshGame(): GameData {
     draftChoices: [],
     shieldPopsCount: 0,
     endlessPopsInWave: 0,
+    ultCharge: 0,
+    laserTimer: 0,
+    tsunamiActive: 0,
   }
 }
 
@@ -2922,6 +2942,7 @@ export default function Home() {
     toMenu: () => void
     bye: () => void
     triggerDash: (dir?: number) => void
+    triggerUltimate: () => void
     selectPerk: (perkId: string) => void
   } | null>(null)
 
@@ -2952,6 +2973,7 @@ export default function Home() {
     endlessWave: 1,
     perks: [] as string[],
     draftChoices: [] as PerkCard[],
+    ultCharge: 0,
   })
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
@@ -3035,6 +3057,7 @@ export default function Home() {
         const dCooldown = Number(g.dashCooldown.toFixed(1))
         const eWave = g.endlessWave || 1
         const pLen = g.perks?.length || 0
+        const uCharge = Math.round(g.ultCharge || 0)
         if (
           prev.level === g.level &&
           prev.popped === g.popped &&
@@ -3055,7 +3078,8 @@ export default function Home() {
           prev.dashCooldown === dCooldown &&
           prev.endlessWave === eWave &&
           prev.perks?.length === pLen &&
-          prev.draftChoices === g.draftChoices
+          prev.draftChoices === g.draftChoices &&
+          prev.ultCharge === uCharge
         )
           return prev
         return {
@@ -3080,6 +3104,7 @@ export default function Home() {
           endlessWave: eWave,
           perks: [...(g.perks || [])],
           draftChoices: g.draftChoices || [],
+          ultCharge: uCharge,
         }
       })
     }
@@ -3290,6 +3315,168 @@ export default function Home() {
       syncHud()
     }
 
+    /* 💥 PAL OVERDRIVE ULTIMATE — Chargeable signature super ability! */
+    const triggerUltimate = () => {
+      if (g.state !== 'playing' || (g.ultCharge || 0) < 100) return
+      g.ultCharge = 0
+      g.shake = 22
+      audio.giantPop()
+      audio.frenzyStart()
+
+      const c = CHARACTERS[g.character]
+      const palY = g.h - 96
+
+      // Giant Screen-wide Announcer Text
+      addText(g, g.w / 2, g.h * 0.38, `${c.emoji} ${c.ultName.toUpperCase()}!`, '#ffd93d', 34)
+
+      // Ring pulse VFX from the player
+      for (let k = 0; k < 4; k++) {
+        g.parts.push({
+          x: g.player.x,
+          y: palY - 14,
+          vx: 0,
+          vy: 0,
+          life: 0.65,
+          maxLife: 0.65,
+          color: c.body,
+          size: 40 * (k + 1),
+          rot: 0,
+          vr: 0,
+          kind: 'ring',
+        })
+      }
+
+      if (g.character === 'rocky') {
+        // 🚀 ROCKY: METEOR BARRAGE — 18 giant piercing shooting stars rain down
+        for (let s = 0; s < 18; s++) {
+          const sx = rand(40, g.w - 40)
+          const sy = -rand(20, 240)
+          g.shots.push({
+            x: sx,
+            y: sy,
+            vy: PLAYER.shotSpeed * rand(1.5, 2.2),
+            vx: rand(-30, 30),
+            r: rand(16, 24),
+            kind: 'star',
+            wob: rand(0, 6),
+            pierce: 5,
+          })
+        }
+        g.enemyStars.length = 0
+      } else if (g.character === 'dolly') {
+        // 🐬 DOLLY: TSUNAMI VORTEX — cleansing whirlpool sweeps all projectiles into stars, lifts & damages enemies
+        g.tsunamiActive = 3.0
+        for (const es of g.enemyStars) {
+          g.starDrops.push({
+            x: es.x,
+            y: es.y,
+            vx: rand(-60, 60),
+            vy: -110,
+            rot: 0,
+            vr: 3,
+            alpha: 1,
+          })
+          burst(g, es.x, es.y, '#38bdf8')
+        }
+        g.enemyStars.length = 0
+        for (const m of g.monsters) {
+          m.hp = Math.max(1, m.hp - 4)
+          m.hitFlash = 0.5
+          if (m.boss < 0) m.y = Math.max(50, m.y - 140)
+          burst(g, m.x, m.y, '#0284c7')
+        }
+      } else if (g.character === 'bunny') {
+        // 🐰 BUNNY: HEART BLOSSOM — bullet time time-freeze + converts up to 5 stars into gifts & heals player!
+        g.bulletTime = 1.8
+        const maxH = getModeConfig(g.mode).hearts
+        if (g.hearts < maxH) {
+          g.hearts++
+          addText(g, g.player.x, palY - 45, '💗 +1 HEART RESTORED!', '#f43f5e', 22)
+        }
+        for (const es of g.enemyStars) {
+          g.powerups.push({
+            x: es.x,
+            baseX: es.x,
+            y: es.y,
+            vy: 60,
+            r: 22,
+            type: Math.random() < 0.4 ? 'heart' : 'shield',
+            phase: 0,
+            alpha: 1,
+          })
+          burst(g, es.x, es.y, '#f43f5e')
+        }
+        g.enemyStars.length = 0
+        for (const m of g.monsters) {
+          m.hp = Math.max(1, m.hp - 3)
+          m.hitFlash = 0.5
+          burst(g, m.x, m.y, '#f43f5e')
+        }
+      } else if (g.character === 'zippy') {
+        // 🤖 ZIPPY: LASER OVERLOAD — twin hypersonic ricochet laser beams bounce for 4.5 seconds
+        g.laserTimer = 4.5
+        g.enemyStars.length = 0
+        for (const dir of [-1, -0.5, 0.5, 1]) {
+          g.shots.push({
+            x: g.player.x + dir * 24,
+            y: palY - 40,
+            vy: -PLAYER.shotSpeed * 1.8,
+            vx: dir * 320,
+            r: 16,
+            kind: 'rainbow',
+            wob: rand(0, 6),
+            bounces: 8,
+            pierce: 6,
+          })
+        }
+      } else if (g.character === 'panda') {
+        // 🐼 PANDA: BAMBOO HURRICANE — emerald crescent barrage slicing all rows
+        g.enemyStars.length = 0
+        for (let row = 0; row < 5; row++) {
+          const sy = 80 + row * 80
+          for (const sgn of [-1, 1]) {
+            g.shots.push({
+              x: sgn < 0 ? 20 : g.w - 20,
+              y: sy,
+              vy: 0,
+              vx: sgn * -380,
+              r: 18,
+              kind: 'star',
+              wob: 0,
+              pierce: 6,
+            })
+          }
+        }
+        for (const m of g.monsters) {
+          m.hp = Math.max(1, m.hp - 4)
+          m.hitFlash = 0.5
+          burst(g, m.x, m.y, '#10b981')
+        }
+      } else {
+        // 🐱 KITTY: SUPERNOVA SPARKLE — 360-degree radiant celestial glitter explosion
+        g.enemyStars.length = 0
+        for (let ang = 0; ang < Math.PI * 2; ang += Math.PI / 10) {
+          g.shots.push({
+            x: g.player.x,
+            y: palY - 20,
+            vy: -PLAYER.shotSpeed * 1.3 * Math.cos(ang),
+            vx: PLAYER.shotSpeed * 1.3 * Math.sin(ang),
+            r: 13,
+            kind: 'heart',
+            wob: rand(0, 6),
+            pierce: 4,
+          })
+        }
+        for (const m of g.monsters) {
+          m.hp = Math.max(1, m.hp - 3)
+          m.hitFlash = 0.5
+          burst(g, m.x, m.y, '#f59e0b')
+        }
+      }
+
+      syncHud()
+    }
+
     /* start a (new) level with a cheerful GO! banner */
     const beginLevel = () => {
       g.popped = 0
@@ -3318,6 +3505,8 @@ export default function Home() {
       g.dashInvuln = 0
       g.decayMultiplier = 1.0
       g.decayTimer = 0
+      g.laserTimer = 0
+      g.tsunamiActive = 0
       g.targetX = null
       g.targetY = null
       // Apply pre-level booster if bought
@@ -3833,6 +4022,7 @@ export default function Home() {
         g.popped++
         g.score++
         persistStars(g.score)
+        g.ultCharge = Math.min(100, (g.ultCharge || 0) + 8)
         g.monsters.splice(j, 1)
       }
       // did the giant pop finish the goal? then here comes the boss!
@@ -4009,6 +4199,8 @@ export default function Home() {
       if (g.shake > 0) g.shake = Math.max(0, g.shake - dt * 32)
       if (g.dashCooldown > 0) g.dashCooldown = Math.max(0, g.dashCooldown - dt)
       if (g.dashInvuln > 0) g.dashInvuln = Math.max(0, g.dashInvuln - dt)
+      if (g.laserTimer > 0) g.laserTimer = Math.max(0, g.laserTimer - dt)
+      if (g.tsunamiActive > 0) g.tsunamiActive = Math.max(0, g.tsunamiActive - dt)
 
       // ⏱️ Time-Attack Rush Multiplier decay
       if (g.decayTimer > 0) {
@@ -4604,6 +4796,7 @@ export default function Home() {
               g.hitStop = 0.05
               g.score++
               persistStars(g.score)
+              g.ultCharge = Math.min(100, (g.ultCharge || 0) + 3)
               addText(g, m.x + rand(-20, 20), m.y - m.r * 0.4, pick(['Boing!', 'Boop!', 'Pop!']), '#f278ab', 20)
               addText(g, m.x + 28, m.y - m.r * 0.4 - 24, '+1⭐', '#e8a800', 14)
 
@@ -4754,6 +4947,16 @@ export default function Home() {
                   addText(g, g.w / 2, g.h * 0.42 + 32, '🌈 UNLIMITED RAINBOW SHOTS! 🌈', '#ffd93d', 20)
                 }
               }
+
+              // 💥 Pal Ultimate Gauge Charging
+              const ultGain = g.mode === 'kids' ? 7.5 : 5.0
+              const prevUlt = g.ultCharge || 0
+              g.ultCharge = Math.min(100, prevUlt + ultGain)
+              if (prevUlt < 100 && g.ultCharge >= 100) {
+                audio.newFriend()
+                g.shake = 8
+                addText(g, g.player.x, g.h - 130, '💥 ULTIMATE READY! (E)', '#ffd93d', 22)
+              }
               syncHud()
               // sometimes a happy little bonus star tumbles out! ⭐
               if (Math.random() < PU.starChance) {
@@ -4879,6 +5082,9 @@ export default function Home() {
       }
       if (e.key === 'Shift') {
         triggerDash()
+      }
+      if (e.key === 'e' || e.key === 'E' || e.key === 'f' || e.key === 'F' || e.key === 'q' || e.key === 'Q') {
+        triggerUltimate()
       }
       if (e.key === ' ' || e.key === 'Spacebar' || e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
         keys.shoot = true
@@ -5141,7 +5347,7 @@ export default function Home() {
       syncHud()
     }
 
-    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, pullGachapon, toggleVFX, buySecretPal, buyIslandToy, unlockZenMode, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye, triggerDash, selectPerk }
+    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, pullGachapon, toggleVFX, buySecretPal, buyIslandToy, unlockZenMode, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye, triggerDash, triggerUltimate, selectPerk }
 
     /* ── go! ── */
     let raf = 0
@@ -5437,9 +5643,35 @@ export default function Home() {
         )}
 
         {/* tiny desktop hint */}
-        <div className="pointer-events-none absolute bottom-2 left-3 z-10 hidden text-xs font-bold text-slate-600/70 sm:block">
-          ← → move · space = pop · shift / double-tap = dash ⚡
+        <div className="pointer-events-none absolute bottom-2 left-24 z-10 hidden text-xs font-bold text-slate-600/70 sm:block">
+          ← → move · space = pop · shift = dash · E = ultimate 💥
         </div>
+
+        {/* 💥 PAL OVERDRIVE ULTIMATE BUTTON */}
+        {ui === 'playing' && (
+          <button
+            onClick={(e) => {
+              e.currentTarget.blur()
+              controlsRef.current?.triggerUltimate()
+            }}
+            disabled={hud.ultCharge < 100}
+            className={`absolute bottom-4 left-4 z-30 flex h-14 w-14 sm:h-16 sm:w-16 flex-col items-center justify-center rounded-full font-black shadow-lg transition active:scale-90 ${
+              hud.ultCharge >= 100
+                ? 'bg-gradient-to-r from-amber-400 via-rose-500 to-purple-600 text-white ring-4 ring-amber-300 animate-pulse hover:brightness-110 shadow-amber-400/50 cursor-pointer'
+                : 'bg-slate-800/80 text-slate-300 ring-2 ring-slate-600 cursor-not-allowed opacity-80'
+            }`}
+            title={`${CHARACTERS[hud.character].ultName} (${CHARACTERS[hud.character].ultDesc}) — Key: E`}
+            aria-label={`${CHARACTERS[hud.character].ultName} Super Move`}
+          >
+            <span className="text-xl sm:text-2xl drop-shadow" aria-hidden>
+              {hud.ultCharge >= 100 ? '💥' : CHARACTERS[hud.character].emoji}
+            </span>
+            <span className="text-[10px] sm:text-[11px] font-black leading-none drop-shadow">
+              {hud.ultCharge >= 100 ? 'READY!' : `${hud.ultCharge}%`}
+            </span>
+            <span className="hidden sm:inline text-[8px] font-bold text-amber-200">KEY: E</span>
+          </button>
+        )}
 
         {/* ⚡ Mobile & Desktop Phase Dash Button */}
         {ui === 'playing' && (
@@ -6424,6 +6656,9 @@ export default function Home() {
                       </div>
                       <span className="mt-1 text-sm font-extrabold leading-tight text-gray-700">{c.name}</span>
                       <span className="mt-0.5 text-[11px] font-bold text-gray-400">{c.tagline}</span>
+                      <span className="mt-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-black text-indigo-600 ring-1 ring-indigo-200">
+                        ⚡ {c.ultName}
+                      </span>
                       {sel && (
                         <span className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-amber-300 bg-white shadow" aria-hidden>
                           <Check size={15} strokeWidth={3.5} className="text-amber-500" />
