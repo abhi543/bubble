@@ -484,6 +484,8 @@ interface Monster {
   targetY: number // boss: the height it hovers at
   shootT?: number // countdown to firing an enemy star
   nearMissed?: boolean // true if already triggered close-call adrenaline rush
+  bossPhase?: number // 1 = Normal, 2 = Fury (<=66%), 3 = Overdrive (<=33%)
+  koTimer?: number // > 0 = in dramatic cinematic K.O. sequence
 }
 
 interface Shot {
@@ -1749,11 +1751,69 @@ function drawEnemy(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
   if (m.boss >= 0) {
     ctx.save()
     ctx.translate(m.x, m.y)
-    const sq = m.hitFlash > 0 ? Math.sin(m.hitFlash * 24) * 0.05 : 0 // boop squash!
-    if (sq) ctx.scale(1 + sq, 1 - sq)
+
+    // 🎬 Cinematic K.O. expansion & radiant rainbow light rays
+    if (m.koTimer !== undefined && m.koTimer > 0) {
+      const koProgress = 1 - (m.koTimer / 1.6) // 0 to 1
+      const pulseScale = 1 + koProgress * 0.45 + Math.sin(time * 35) * 0.08
+      ctx.scale(pulseScale, pulseScale)
+
+      // Expanding radiant sunburst rays behind K.O. boss
+      ctx.save()
+      ctx.rotate(time * 2.5)
+      const numRays = 12
+      const rayLen = m.r * (1.6 + koProgress * 1.5)
+      for (let ri = 0; ri < numRays; ri++) {
+        const rayAng = (ri / numRays) * Math.PI * 2
+        ctx.beginPath()
+        ctx.moveTo(0, 0)
+        ctx.lineTo(Math.cos(rayAng - 0.12) * rayLen, Math.sin(rayAng - 0.12) * rayLen)
+        ctx.lineTo(Math.cos(rayAng + 0.12) * rayLen, Math.sin(rayAng + 0.12) * rayLen)
+        ctx.closePath()
+        const rayHue = (time * 300 + ri * 30) % 360
+        ctx.fillStyle = `hsla(${rayHue}, 100%, 70%, ${0.35 + Math.sin(time * 20) * 0.15})`
+        ctx.fill()
+      }
+      ctx.restore()
+    } else {
+      const phase = m.bossPhase ?? 1
+      // Phase 2 / Phase 3 visual aura rings
+      if (phase === 2) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.arc(0, 0, m.r + 10 + Math.sin(time * 8) * 3, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(249, 115, 22, 0.75)'
+        ctx.lineWidth = 4
+        ctx.setLineDash([8, 6])
+        ctx.lineDashOffset = -time * 20
+        ctx.stroke()
+        ctx.restore()
+      } else if (phase === 3) {
+        ctx.save()
+        const auraGrad = ctx.createRadialGradient(0, 0, m.r * 0.8, 0, 0, m.r * 1.5)
+        auraGrad.addColorStop(0, 'rgba(255, 0, 85, 0.35)')
+        auraGrad.addColorStop(1, 'rgba(255, 0, 85, 0)')
+        ctx.fillStyle = auraGrad
+        ctx.beginPath()
+        ctx.arc(0, 0, m.r * 1.5, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.beginPath()
+        ctx.arc(0, 0, m.r + 12 + Math.sin(time * 14) * 4, 0, Math.PI * 2)
+        ctx.strokeStyle = '#ff0055'
+        ctx.lineWidth = 4.5
+        ctx.setLineDash([10, 5])
+        ctx.lineDashOffset = -time * 35
+        ctx.stroke()
+        ctx.restore()
+      }
+      const sq = m.hitFlash > 0 ? Math.sin(m.hitFlash * 24) * 0.05 : 0 // boop squash!
+      if (sq) ctx.scale(1 + sq, 1 - sq)
+    }
+
     drawBoss(ctx, m, time)
     ctx.restore()
-    drawBossBadge(ctx, m) // name tag + little-star health bar
+    drawBossBadge(ctx, m) // name tag + little-star health bar + phase badges
     return
   }
 
@@ -2245,26 +2305,49 @@ function drawBoss(ctx: CanvasRenderingContext2D, m: Monster, time: number) {
 /* the boss's name tag + a row of little stars = its health bar! ⭐ */
 function drawBossBadge(ctx: CanvasRenderingContext2D, m: Monster) {
   const b = BOSSES[Math.min(BOSSES.length - 1, m.boss)]
+  const phase = m.bossPhase ?? 1
   const nameY = m.y + m.r + 20
   const starsY = m.y + m.r + 40
+
   ctx.save()
+  // Boss Phase Tag above name if Phase 2 or 3
+  if (phase === 2) {
+    ctx.font = `900 11px ${FONT}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)'
+    ctx.strokeText('⚡ PHASE 2: FURY ⚡', m.x, m.y + m.r + 5)
+    ctx.fillStyle = '#f97316'
+    ctx.fillText('⚡ PHASE 2: FURY ⚡', m.x, m.y + m.r + 5)
+  } else if (phase === 3) {
+    ctx.font = `900 11px ${FONT}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.lineWidth = 3
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)'
+    ctx.strokeText('🔥 FINAL PHASE: OVERDRIVE 🔥', m.x, m.y + m.r + 5)
+    ctx.fillStyle = '#ff0055'
+    ctx.fillText('🔥 FINAL PHASE: OVERDRIVE 🔥', m.x, m.y + m.r + 5)
+  }
+
   ctx.font = `bold 15px ${FONT}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.lineWidth = 4
   ctx.strokeStyle = 'rgba(255,255,255,0.92)'
   ctx.strokeText(b.name, m.x, nameY)
-  ctx.fillStyle = m.color || '#f278ab'
+  ctx.fillStyle = phase === 3 ? '#ff0055' : phase === 2 ? '#f97316' : (m.color || '#f278ab')
   ctx.fillText(b.name, m.x, nameY)
   const gap = 16
   const startX = m.x - ((m.maxHp - 1) * gap) / 2
   for (let i = 0; i < m.maxHp; i++) {
     const alive = i < m.hp
     starPath(ctx, startX + i * gap, starsY, alive ? 6.5 : 5, alive ? 2.8 : 2.2, 5, -Math.PI / 2)
-    ctx.fillStyle = alive ? '#ffd93d' : 'rgba(0,0,0,0.13)'
+    ctx.fillStyle = alive ? (phase === 3 ? '#ff0055' : phase === 2 ? '#f97316' : '#ffd93d') : 'rgba(0,0,0,0.13)'
     ctx.fill()
     if (alive) {
-      ctx.strokeStyle = '#e8a800'
+      ctx.strokeStyle = phase === 3 ? '#990033' : phase === 2 ? '#c2410c' : '#e8a800'
       ctx.lineWidth = 1.5
       ctx.stroke()
     }
@@ -3327,13 +3410,15 @@ export default function Home() {
       const m = g.monsters[j]
       const b = BOSSES[Math.min(BOSSES.length - 1, m.boss)]
       g.monsters.splice(j, 1)
-      g.shake = 22 // massive boss explosion shake
+      g.shake = 28 // massive boss explosion shake
       burst(g, m.x, m.y, m.color)
       fireworks(g)
       g.score += b.bonus
       persistStars(g.score)
-      addText(g, m.x, m.y - 46, `+${b.bonus} ⭐ BONUS!`, '#e8a800', 24)
+      addText(g, m.x, m.y - 46, `+${b.bonus} ⭐ VICTORY BONUS!`, '#e8a800', 28)
+      addText(g, m.x, m.y - 82, 'VICTORY POP! 🎆', '#ff007f', 36)
       audio.bossDown()
+      audio.giantPop()
       completeLevel()
     }
 
@@ -3457,9 +3542,14 @@ export default function Home() {
           m.hp -= PU.bossDamage // bosses only lose a few star points!
           m.hitFlash = 0.35
           addText(g, m.x + rand(-20, 20), m.y - m.r * 0.5, pick(['Boing!', 'Oof!', 'Wow!']), '#f278ab', 22)
-          if (m.hp <= 0) {
-            defeatBoss(j)
-            return // completeLevel handled the whole celebration!
+          if (m.hp <= 0 && m.koTimer === undefined) {
+            m.hp = 0
+            m.koTimer = 1.6
+            g.bulletTime = 1.6
+            g.shake = 16
+            audio.frenzyStart()
+            addText(g, m.x, m.y - m.r - 28, '👑 K.O.!', '#ffd93d', 34)
+            continue
           }
           continue
         }
@@ -3569,6 +3659,7 @@ export default function Home() {
         spin: 0,
         settled: false,
         targetY: clamp(g.h * 0.24, 105, 175),
+        bossPhase: 1,
       })
       g.bossSpawned = true
       g.introQueue.push({ name: b.name, emoji: b.emoji, hint: 'boop it until every star is gone!', boss: true })
@@ -3708,6 +3799,32 @@ export default function Home() {
         /* 👑 bosses glide side to side near the top & can NEVER reach the
            ground — so they can never scare you. Just boop their stars away! */
         if (m.boss >= 0) {
+          if (m.koTimer !== undefined && m.koTimer > 0) {
+            m.koTimer -= dt
+            m.hitFlash = 1.0
+            if (Math.random() < 0.65) {
+              g.parts.push({
+                x: m.x + rand(-m.r * 1.1, m.r * 1.1),
+                y: m.y + rand(-m.r * 1.1, m.r * 1.1),
+                vx: rand(-120, 120),
+                vy: rand(-120, 120),
+                life: 0.45,
+                maxLife: 0.45,
+                color: pick(['#ffd93d', '#ff007f', '#38bdf8', '#a855f7', '#ffffff']),
+                size: rand(4, 8),
+                rot: rand(0, 6),
+                vr: rand(-5, 5),
+                kind: 'sparkle',
+              })
+            }
+            g.shake = Math.max(g.shake, (1.6 - m.koTimer) * 12)
+            if (m.koTimer <= 0) {
+              m.koTimer = 0
+              defeatBoss(i)
+            }
+            continue
+          }
+
           if (!m.settled) {
             m.y += 90 * dt // floats down to its comfy hover spot first
             if (m.y >= m.targetY) {
@@ -3716,8 +3833,28 @@ export default function Home() {
             }
           } else {
             const b = BOSSES[Math.min(BOSSES.length - 1, m.boss)]
-            m.y = m.targetY + Math.sin(g.et * b.swingSpeed * 1.4) * 12 // gentle bob
-            m.x = g.w / 2 + Math.sin(g.et * b.swingSpeed) * g.w * b.swingAmp // side to side
+            const phase = m.bossPhase ?? 1
+            const phaseSpeedMul = phase === 3 ? 1.65 : phase === 2 ? 1.35 : 1.0
+            const swingSpeed = b.swingSpeed * phaseSpeedMul
+            m.y = m.targetY + Math.sin(g.et * swingSpeed * 1.4) * (12 + (phase - 1) * 4)
+            m.x = g.w / 2 + Math.sin(g.et * swingSpeed) * g.w * b.swingAmp
+
+            // Phase 3 Overdrive Flame Trail particles
+            if (phase === 3 && Math.random() < 0.45) {
+              g.parts.push({
+                x: m.x + rand(-m.r * 0.6, m.r * 0.6),
+                y: m.y + rand(-m.r * 0.4, m.r * 0.4),
+                vx: rand(-30, 30),
+                vy: rand(20, 80),
+                life: 0.35,
+                maxLife: 0.35,
+                color: pick(['#ff0055', '#ff5500', '#ffd93d']),
+                size: rand(3, 6),
+                rot: 0,
+                vr: 1,
+                kind: 'sparkle',
+              })
+            }
           }
           continue
         }
@@ -3849,16 +3986,23 @@ export default function Home() {
       }
 
       /* 🌟 ENEMY STAR ATTACKS: Controlled, capped & smooth */
-      const maxStarsAllowed = g.mode === 'kids' ? 2 : 4
+      const hasBoss = g.monsters.some((m) => m.boss >= 0)
+      const maxStarsAllowed = hasBoss ? 6 : (g.mode === 'kids' ? 2 : 4)
       if (g.enemyStars.length < maxStarsAllowed) {
         for (const m of g.monsters) {
           if (m.y < 40 || m.y > g.h - 160) continue
+          if (m.koTimer !== undefined && m.koTimer > 0) continue // KO sequence: boss ceases firing
           if (m.shootT === undefined) m.shootT = rand(3.0, 7.0)
           m.shootT -= dt * slowF
           if (m.shootT <= 0 && g.enemyStars.length < maxStarsAllowed) {
             const isBoss = m.boss >= 0
+            const phase = isBoss ? (m.bossPhase ?? 1) : 1
             m.shootT = isBoss
-              ? rand(2.4, 4.0)
+              ? phase === 3
+                ? rand(1.5, 2.4)
+                : phase === 2
+                ? rand(1.9, 3.0)
+                : rand(2.4, 4.0)
               : g.mode === 'adults'
               ? rand(4.0, 7.5)
               : rand(6.5, 11.0)
@@ -3867,15 +4011,27 @@ export default function Home() {
             const aimFactor = clamp(dxToPlayer * 0.35, -60, 60)
             const starVy = rand(140, 200)
 
-            g.enemyStars.push({
-              x: m.x,
-              y: m.y + m.r + 4,
-              vx: aimFactor,
-              vy: starVy,
-              rot: rand(0, Math.PI * 2),
-              vr: rand(2.5, 5.0) * (Math.random() < 0.5 ? -1 : 1),
-              color: isBoss ? '#f43f5e' : '#fb7185',
-            })
+            // Phase 1: 1 star. Phase 2: dual spread. Phase 3: 3-star fan burst!
+            const spreads = isBoss
+              ? phase === 3
+                ? [-34, 0, 34]
+                : phase === 2
+                ? [-20, 20]
+                : [0]
+              : [0]
+
+            for (const sp of spreads) {
+              if (g.enemyStars.length >= maxStarsAllowed) break
+              g.enemyStars.push({
+                x: m.x,
+                y: m.y + m.r + 4,
+                vx: aimFactor + sp,
+                vy: starVy,
+                rot: rand(0, Math.PI * 2),
+                vr: rand(2.5, 5.0) * (Math.random() < 0.5 ? -1 : 1),
+                color: isBoss ? (phase === 3 ? '#ff0055' : phase === 2 ? '#f97316' : '#f43f5e') : '#fb7185',
+              })
+            }
           }
         }
       }
@@ -4119,7 +4275,47 @@ export default function Home() {
               persistStars(g.score)
               addText(g, m.x + rand(-20, 20), m.y - m.r * 0.4, pick(['Boing!', 'Boop!', 'Pop!']), '#f278ab', 20)
               addText(g, m.x + 28, m.y - m.r * 0.4 - 24, '+1⭐', '#e8a800', 14)
-              if (m.hp <= 0) defeatBoss(j) // 🎆 fireworks & a big star bonus!
+
+              // Check Phase Transition (Phase 1 > 66%, Phase 2 33-66%, Phase 3 < 33%)
+              const prevPhase = m.bossPhase ?? 1
+              const hpRatio = m.hp / m.maxHp
+              const newPhase = hpRatio <= 0.33 ? 3 : hpRatio <= 0.66 ? 2 : 1
+              if (newPhase > prevPhase && m.hp > 0) {
+                m.bossPhase = newPhase
+                g.shake = 16
+                g.bulletTime = 0.4
+                audio.powerUp()
+                for (let k = 0; k < 3; k++) {
+                  g.parts.push({
+                    x: m.x,
+                    y: m.y,
+                    vx: 0,
+                    vy: 0,
+                    life: 0.55,
+                    maxLife: 0.55,
+                    color: newPhase === 3 ? '#ff0055' : '#f59e0b',
+                    size: m.r * (1 + k * 0.45),
+                    rot: 0,
+                    vr: 0,
+                    kind: 'ring',
+                  })
+                }
+                if (newPhase === 2) {
+                  addText(g, m.x, m.y - m.r - 26, '⚡ PHASE 2: FURY!', '#f59e0b', 26)
+                } else if (newPhase === 3) {
+                  addText(g, m.x, m.y - m.r - 26, '🔥 FINAL PHASE: OVERDRIVE!', '#ff0055', 28)
+                }
+              }
+
+              if (m.hp <= 0 && m.koTimer === undefined) {
+                // 🎬 Trigger Cinematic K.O. Finisher Sequence!
+                m.hp = 0
+                m.koTimer = 1.6 // 1.6s cinematic slow-mo finisher
+                g.bulletTime = 1.6
+                g.shake = 12
+                audio.frenzyStart()
+                addText(g, m.x, m.y - m.r - 30, '👑 K.O.!', '#ffd93d', 34)
+              }
             } else if (m.hp <= 0) {
               // popped! confetti party! 🎉
               g.monsters.splice(j, 1)
