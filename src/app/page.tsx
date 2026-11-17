@@ -43,6 +43,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Share2,
   Sparkles,
   Star,
   Trophy,
@@ -389,9 +390,12 @@ export interface VFXDef {
 
 export const BUBBLE_VFX: VFXDef[] = [
   { id: 'classic', name: 'Classic Pop', emoji: '🫧', cost: 0, reqLevel: 0, desc: 'Original happy bubbly projectiles.', glowColor: '#38bdf8' },
-  { id: 'music', name: 'Melody Notes', emoji: '🎵', cost: 30, reqLevel: 50, desc: 'Bubbles chime musical tones as they fly!', glowColor: '#ec4899' },
-  { id: 'galaxy', name: 'Galaxy Stars', emoji: '🌌', cost: 40, reqLevel: 50, desc: 'Cosmic starlight particles and dark purple glow.', glowColor: '#8b5cf6' },
-  { id: 'candy', name: 'Donut Confetti', emoji: '🍩', cost: 50, reqLevel: 50, desc: 'Sprinkles burst from popped enemies!', glowColor: '#f59e0b' },
+  { id: 'stardust', name: 'Golden Stardust', emoji: '✨', cost: 35, reqLevel: 5, desc: 'Gleaming golden star trails trailing behind every shot!', glowColor: '#ffd93d' },
+  { id: 'neon', name: 'Cyber Neon', emoji: '⚡', cost: 45, reqLevel: 10, desc: 'Electrified cyan laser stream and cyber particles!', glowColor: '#00f2fe' },
+  { id: 'rainbow', name: 'Prismatic Ribbon', emoji: '🌈', cost: 55, reqLevel: 15, desc: 'Shimmering polychrome light trails that cycle in the sky!', glowColor: '#ff007f' },
+  { id: 'music', name: 'Melody Notes', emoji: '🎵', cost: 30, reqLevel: 25, desc: 'Bubbles chime musical tones as they fly!', glowColor: '#ec4899' },
+  { id: 'galaxy', name: 'Galaxy Stars', emoji: '🌌', cost: 40, reqLevel: 30, desc: 'Cosmic starlight particles and dark purple glow.', glowColor: '#8b5cf6' },
+  { id: 'candy', name: 'Donut Confetti', emoji: '🍩', cost: 50, reqLevel: 35, desc: 'Sprinkles burst from popped enemies!', glowColor: '#f59e0b' },
 ]
 
 /* ════════ 🎰 MONSTER STICKERS (Level 30+) ════════ */
@@ -617,6 +621,23 @@ interface Shot {
   pierce?: number // Rocky / Panda: passes through multiple enemies!
   bounces?: number // Zippy: bounces off left/right walls!
   hitIds?: number[] // tracks enemies already hit by this piercing shot
+  trail?: Array<{ x: number; y: number; alpha: number }>
+}
+
+/* 👻 Asynchronous Ghost Rival Racer */
+export interface RivalGhost {
+  active: boolean
+  name: string
+  score: number
+  wave: number
+  pal: CharacterId
+  x: number
+  y: number
+  targetX: number
+  wob: number
+  shootTimer: number
+  defeated: boolean
+  trail: Array<{ x: number; y: number; alpha: number }>
 }
 
 interface Particle {
@@ -756,6 +777,7 @@ interface GameData {
   ultCharge: number // 0 to 100 percentage toward Pal Ultimate
   laserTimer: number // active duration for Zippy's Laser Overload
   tsunamiActive: number // active duration for Dolly's Tsunami Vortex
+  ghostRival?: RivalGhost // 👻 Asynchronous ghost rival racer
 }
 
 function freshGame(): GameData {
@@ -780,11 +802,40 @@ function freshGame(): GameData {
   const savedLevel = initialMode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
   const savedScore = save.totalStars || 0
 
+  // 👻 Check for 1-Click Challenge Links or Seed
+  let initialRival: RivalGhost | undefined = undefined
+  if (typeof window !== 'undefined') {
+    try {
+      const q = new URLSearchParams(window.location.search)
+      if (q.has('challenge') || q.has('rival')) {
+        const rivalScore = parseInt(q.get('rival') || '450', 10)
+        const rivalWave = parseInt(q.get('wave') || '4', 10)
+        const rivalName = q.get('name') || 'Shadow Pop'
+        const rivalPal = (q.get('char') as CharacterId) || 'zippy'
+        initialRival = {
+          active: true,
+          name: rivalName,
+          score: Math.max(100, rivalScore),
+          wave: Math.max(1, rivalWave),
+          pal: rivalPal,
+          x: 400,
+          y: 504,
+          targetX: 400,
+          wob: 0,
+          shootTimer: 0.8,
+          defeated: false,
+          trail: [],
+        }
+      }
+    } catch {}
+  }
+
   return {
     state: 'menu',
     w: 800,
     h: 600,
     turbo: typeof window !== 'undefined' && window.location.search.includes('turbo'),
+    ghostRival: initialRival,
     mode: initialMode,
     character: savedPal,
     cosmetic: save.activeCosmetic || "none",
@@ -1011,12 +1062,15 @@ class GameAudio {
     this.tone({ freq: 340, time: this.ctx.currentTime, dur: 0.11, vol: 0.14, glide: 640 })
   }
 
-  /* happy musical "pop!" — each pop chimes a different happy note */
-  pop() {
+  /* 🎵 Beat-Synced Harmonic Pentatonic Pop Chords:
+     popping multiple bubbles in rapid succession ascends a musical pentatonic scale
+     (C5, D5, E5, G5, A5, C6, D6, E6, G6, A6, C7) so combos sound like playing a vibrant synthesizer! */
+  pop(streak = 0) {
     this.init()
     if (!this.ctx) return
     const t = this.ctx.currentTime
-    const base = pick([523.25, 587.33, 659.25, 783.99, 880])
+    const PENTATONIC = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5, 1174.66, 1318.51, 1567.98, 1760.0, 2093.0]
+    const base = PENTATONIC[Math.min(PENTATONIC.length - 1, Math.max(0, streak))]
     this.tone({ freq: base, time: t, dur: 0.18, type: 'triangle', vol: 0.22 })
     this.tone({ freq: base * 2, time: t + 0.04, dur: 0.12, vol: 0.09 })
   }
@@ -1024,26 +1078,30 @@ class GameAudio {
   /* Every pal has their OWN happy pop! 🎵
      rocky = bright ding · dolly = watery blub-blub
      bunny = soft boing  · zippy = arcade bleep-bloop
-     Change the notes freely — sillier is better! */
-  popFor(char: CharacterId) {
+     Ascends musical intervals on combo streaks! */
+  popFor(char: CharacterId, streak = 0) {
     this.init()
     if (!this.ctx) return
     const t = this.ctx.currentTime
+    // Ascending pentatonic pitch multiplier
+    const PENTATONIC_MULTS = [1.0, 1.122, 1.26, 1.498, 1.682, 2.0, 2.245, 2.52, 2.996, 3.364]
+    const mul = PENTATONIC_MULTS[Math.min(PENTATONIC_MULTS.length - 1, Math.max(0, streak))]
+
     if (char === 'rocky') {
       // ⭐ a bright little ding-ding!
-      this.tone({ freq: 784, time: t, dur: 0.14, type: 'triangle', vol: 0.22 })
-      this.tone({ freq: 1568, time: t + 0.04, dur: 0.1, vol: 0.08 })
+      this.tone({ freq: 784 * mul, time: t, dur: 0.14, type: 'triangle', vol: 0.22 })
+      this.tone({ freq: 1568 * mul, time: t + 0.04, dur: 0.1, vol: 0.08 })
     } else if (char === 'dolly') {
       // 💧 a watery blub-blub (slides up like a droplet)
-      this.tone({ freq: 300, time: t, dur: 0.16, type: 'sine', vol: 0.22, glide: 620 })
-      this.tone({ freq: 520, time: t + 0.07, dur: 0.1, type: 'sine', vol: 0.1, glide: 740 })
+      this.tone({ freq: 300 * mul, time: t, dur: 0.16, type: 'sine', vol: 0.22, glide: 620 * mul })
+      this.tone({ freq: 520 * mul, time: t + 0.07, dur: 0.1, type: 'sine', vol: 0.1, glide: 740 * mul })
     } else if (char === 'bunny') {
       // 💗 a soft springy boing
-      this.tone({ freq: 440, time: t, dur: 0.18, type: 'triangle', vol: 0.22, glide: 660 })
+      this.tone({ freq: 440 * mul, time: t, dur: 0.18, type: 'triangle', vol: 0.22, glide: 660 * mul })
     } else {
       // 🌈 an arcade bleep-bloop
-      this.tone({ freq: 660, time: t, dur: 0.08, type: 'square', vol: 0.1 })
-      this.tone({ freq: 990, time: t + 0.06, dur: 0.1, type: 'square', vol: 0.08 })
+      this.tone({ freq: 660 * mul, time: t, dur: 0.08, type: 'square', vol: 0.1 })
+      this.tone({ freq: 990 * mul, time: t + 0.06, dur: 0.1, type: 'square', vol: 0.08 })
     }
   }
 
@@ -2559,7 +2617,35 @@ function drawBossBadge(ctx: CanvasRenderingContext2D, m: Monster) {
 
 /* 🫧 THE FOUR BUBBLES — each pal fires their own!
    star ⭐ (Rocky) · water 💧 (Dolly) · heart 💗 (Bunny) · rainbow 🌈 (Zippy) */
-function drawShot(ctx: CanvasRenderingContext2D, s: Shot, time: number) {
+function drawShot(ctx: CanvasRenderingContext2D, s: Shot, time: number, vfx = 'classic') {
+  // 🌟 Render luminous shot trail
+  if (s.trail && s.trail.length > 1) {
+    ctx.save()
+    for (let tIdx = 0; tIdx < s.trail.length - 1; tIdx++) {
+      const p1 = s.trail[tIdx]
+      const p2 = s.trail[tIdx + 1]
+      const alpha = (p1.alpha || 0.5) * 0.65
+      ctx.beginPath()
+      ctx.moveTo(p1.x, p1.y)
+      ctx.lineTo(p2.x, p2.y)
+      const trailStroke =
+        vfx === 'neon'
+          ? `rgba(0, 242, 254, ${alpha})`
+          : vfx === 'stardust'
+          ? `rgba(255, 217, 61, ${alpha})`
+          : vfx === 'rainbow'
+          ? `hsla(${(time * 360 + tIdx * 25) % 360}, 100%, 70%, ${alpha})`
+          : vfx === 'galaxy'
+          ? `rgba(192, 132, 252, ${alpha})`
+          : `rgba(125, 211, 252, ${alpha})`
+      ctx.strokeStyle = trailStroke
+      ctx.lineWidth = Math.max(2, s.r * (1 - tIdx / s.trail.length) * 0.85)
+      ctx.lineCap = 'round'
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
   /* 💥 the GIANT POP — a huge sparkly bubble with stars spinning around it! */
   if (s.giant) {
     const rr = s.r + Math.sin(time * 9) * 3
@@ -2886,6 +2972,54 @@ function drawAimArrow(ctx: CanvasRenderingContext2D, g: GameData) {
   ctx.restore()
 }
 
+/* 👻 Draw Asynchronous Ghost Rival Pal */
+function drawGhostRival(ctx: CanvasRenderingContext2D, g: GameData) {
+  const gr = g.ghostRival
+  if (!gr || !gr.active) return
+
+  ctx.save()
+  // 1. Ghost Trail
+  for (let k = 0; k < gr.trail.length; k++) {
+    const pt = gr.trail[k]
+    const alpha = (k / gr.trail.length) * 0.28
+    ctx.beginPath()
+    ctx.arc(pt.x, pt.y, 16 * (k / gr.trail.length), 0, Math.PI * 2)
+    ctx.fillStyle = `rgba(56, 189, 248, ${alpha})`
+    ctx.fill()
+  }
+
+  // 2. Holographic Aura & Badge
+  ctx.globalAlpha = 0.52
+  ctx.shadowColor = gr.defeated ? '#4ade80' : '#38bdf8'
+  ctx.shadowBlur = 10
+
+  // 3. Floating Ghost Badge
+  ctx.font = 'bold 13px sans-serif'
+  ctx.textAlign = 'center'
+  ctx.lineWidth = 3
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)'
+  const tagText = gr.defeated ? `🏆 ${gr.name} (DEFEATED!)` : `👻 ${gr.name} (${gr.score}⭐)`
+  ctx.strokeText(tagText, gr.x, gr.y - 42)
+  ctx.fillStyle = gr.defeated ? '#4ade80' : '#38bdf8'
+  ctx.fillText(tagText, gr.x, gr.y - 42)
+
+  // 4. Ghost Body
+  const c = CHARACTERS[gr.pal] || CHARACTERS.rocky
+  ctx.beginPath()
+  ctx.arc(gr.x, gr.y, 23, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.45)'
+  ctx.fill()
+  ctx.strokeStyle = gr.defeated ? '#4ade80' : '#38bdf8'
+  ctx.lineWidth = 2.5
+  ctx.stroke()
+
+  ctx.font = '24px sans-serif'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(c.emoji, gr.x, gr.y + 1)
+
+  ctx.restore()
+}
+
 function render(ctx: CanvasRenderingContext2D, g: GameData) {
   ctx.save()
   if (g.shake > 0) {
@@ -2898,11 +3032,38 @@ function render(ctx: CanvasRenderingContext2D, g: GameData) {
   for (const es of g.enemyStars) drawEnemyStar(ctx, es)
   for (const m of g.monsters) drawEnemy(ctx, m, g.time)
   for (const u of g.powerups) drawPowerUp(ctx, u, g.time)
-  for (const s of g.shots) drawShot(ctx, s, g.time)
+  for (const s of g.shots) drawShot(ctx, s, g.time, g.vfx)
   drawPlayer(ctx, g)
-  // drawAimArrow(ctx, g) - arrow completely removed
+  drawGhostRival(ctx, g)
   drawParticles(ctx, g)
   ctx.restore()
+
+  // ⚡ Phase Dash Speed-Warp & Chromatic Lens Flare
+  if (g.dashInvuln > 0) {
+    ctx.save()
+    const warpAlpha = Math.min(0.35, g.dashInvuln * 1.5)
+    ctx.fillStyle = `rgba(56, 189, 248, ${warpAlpha * 0.4})`
+    ctx.fillRect(0, 0, g.w, g.h)
+    ctx.strokeStyle = `rgba(255, 255, 255, ${warpAlpha * 0.8})`
+    ctx.lineWidth = 2.5
+    for (let k = 0; k < 12; k++) {
+      const rx = (k * 77 + g.time * 400) % g.w
+      ctx.beginPath()
+      ctx.moveTo(rx, 0)
+      ctx.lineTo(rx + (rx - g.w / 2) * 0.25, g.h)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  // 💥 Giant Pop & Ultimate Shockwave Flare
+  if (g.shake > 20) {
+    ctx.save()
+    const flareAlpha = Math.min(0.28, (g.shake - 20) / 20)
+    ctx.fillStyle = `rgba(255, 255, 255, ${flareAlpha})`
+    ctx.fillRect(0, 0, g.w, g.h)
+    ctx.restore()
+  }
 
   // ⚡ Frenzy Bubble Rush — vibrant rainbow energetic edge aura!
   if (g.frenzyActive) {
@@ -3033,7 +3194,9 @@ export default function Home() {
     perks: [] as string[],
     draftChoices: [] as PerkCard[],
     ultCharge: 0,
+    ghostRival: null as RivalGhost | null,
   })
+  const [challengeCopied, setChallengeCopied] = useState(false)
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
@@ -3142,7 +3305,8 @@ export default function Home() {
           prev.endlessWave === eWave &&
           prev.perks?.length === pLen &&
           prev.draftChoices === g.draftChoices &&
-          prev.ultCharge === uCharge
+          prev.ultCharge === uCharge &&
+          prev.ghostRival?.defeated === g.ghostRival?.defeated
         )
           return prev
         return {
@@ -3168,6 +3332,7 @@ export default function Home() {
           perks: [...(g.perks || [])],
           draftChoices: g.draftChoices || [],
           ultCharge: uCharge,
+          ghostRival: g.ghostRival ? { ...g.ghostRival } : null,
         }
       })
     }
@@ -3594,6 +3759,31 @@ export default function Home() {
       }
       g.cosmetic = activeSave.activeCosmetic || 'none'
       g.vfx = activeSave.activeVFX || 'classic'
+
+      // 👻 Set up Ghost Rival for endless or adult runs
+      if (!g.ghostRival && (g.mode === 'endless' || g.mode === 'adults')) {
+        const rivalScore = g.mode === 'endless' ? Math.max(300, (activeSave.endlessHighScore || 500)) : 400
+        g.ghostRival = {
+          active: true,
+          name: activeSave.profile?.displayName ? `Ghost ${activeSave.profile.displayName}` : '⚡ Turbo Rival',
+          score: rivalScore,
+          wave: activeSave.endlessMaxWave || 4,
+          pal: 'zippy',
+          x: g.w * 0.35,
+          y: g.h - 96,
+          targetX: g.w * 0.35,
+          wob: 0,
+          shootTimer: 0.8,
+          defeated: false,
+          trail: [],
+        }
+      } else if (g.ghostRival) {
+        g.ghostRival.x = g.w * 0.35
+        g.ghostRival.y = g.h - 96
+        g.ghostRival.targetX = g.w * 0.35
+        g.ghostRival.defeated = false
+        g.ghostRival.trail = []
+      }
       g.state = 'playing'
       setUi('playing')
       if (g.mode === 'endless') {
@@ -3709,7 +3899,7 @@ export default function Home() {
       }
 
       audio.newFriend()
-      audio.pop()
+      audio.pop(g.streak)
       haptics.pop()
       g.shake = 12
       addText(g, g.w / 2, g.h * 0.45, `+ ${perk.name}! ⚡`, '#ffd93d', 30)
@@ -3962,7 +4152,7 @@ export default function Home() {
     const collectStar = (st: StarDrop) => {
       g.score += PU.starValue
       persistStars(g.score)
-      audio.pop()
+      audio.pop(g.streak)
       haptics.pop()
       addText(g, st.x, st.y - 8, `+${PU.starValue}⭐`, '#e8a800', 17)
       for (let k = 0; k < 6; k++) {
@@ -4617,6 +4807,57 @@ export default function Home() {
         }
       }
 
+      /* 👻 GHOST RIVAL ASYNCHRONOUS RACER SIMULATION */
+      if (g.ghostRival && g.ghostRival.active && g.state === 'playing') {
+        const gr = g.ghostRival
+        gr.wob += dt * 3
+        if (g.monsters.length > 0) {
+          const targetM = g.monsters[Math.floor((g.time * 0.8) % g.monsters.length)]
+          if (targetM) gr.targetX = targetM.x
+        } else {
+          gr.targetX = g.w / 2 + Math.sin(g.time * 1.5) * (g.w * 0.35)
+        }
+        gr.x += (gr.targetX - gr.x) * Math.min(1, dt * 4.5)
+        gr.y = (g.h - 96) + Math.sin(gr.wob) * 8
+
+        // Trail points
+        gr.trail.unshift({ x: gr.x, y: gr.y, alpha: 0.6 })
+        if (gr.trail.length > 10) gr.trail.pop()
+        for (const pt of gr.trail) pt.alpha *= 0.88
+
+        // Cosmetic Ghost bubble pops
+        gr.shootTimer -= dt
+        if (gr.shootTimer <= 0) {
+          gr.shootTimer = rand(0.6, 1.4)
+          g.parts.push({
+            x: gr.x,
+            y: gr.y - 18,
+            vx: rand(-12, 12),
+            vy: -220,
+            life: 0.7,
+            maxLife: 0.7,
+            color: 'rgba(56, 189, 248, 0.45)',
+            size: 13,
+            rot: 0,
+            vr: 0,
+            kind: 'sparkle',
+          })
+        }
+
+        // Check victory over rival
+        if (!gr.defeated && g.score >= gr.score) {
+          gr.defeated = true
+          g.score += 100
+          persistStars(g.score)
+          audio.win()
+          haptics.celebrate()
+          g.shake = 18
+          fireworks(g)
+          addText(g, g.w / 2, g.h * 0.38, '🏆 RIVAL DEFEATED! +100⭐', '#ffd93d', 30)
+          addText(g, g.w / 2, g.h * 0.45, `You conquered ${gr.name}!`, '#38bdf8', 22)
+        }
+      }
+
       /* 🌟 ENEMY STARS MOVEMENT & PLAYER DAMAGE */
       const palY = g.h - 96 // the player pal hover height
       for (let i = g.enemyStars.length - 1; i >= 0; i--) {
@@ -4751,8 +4992,32 @@ export default function Home() {
           }
         }
 
+        // 🌟 Record shot trail points
+        if (!s.trail) s.trail = []
+        s.trail.unshift({ x: s.x, y: s.y, alpha: 1.0 })
+        if (s.trail.length > 8) s.trail.pop()
+        for (const pt of s.trail) pt.alpha *= 0.88
+
         // Custom Star Bazaar VFX handling
-        if (g.vfx === 'music' && Math.random() < 0.25) {
+        if (g.vfx === 'stardust' && Math.random() < 0.35) {
+          g.parts.push({
+            x: s.x + rand(-4, 4), y: s.y + rand(4, 12), vx: rand(-20, 20), vy: rand(20, 50),
+            life: 0.32, maxLife: 0.32, color: '#ffd93d', size: rand(2.5, 4.5), rot: 0, vr: rand(-4, 4),
+            kind: 'sparkle'
+          })
+        } else if (g.vfx === 'neon' && Math.random() < 0.4) {
+          g.parts.push({
+            x: s.x + rand(-3, 3), y: s.y + rand(2, 10), vx: rand(-30, 30), vy: rand(30, 70),
+            life: 0.25, maxLife: 0.25, color: '#00f2fe', size: 3, rot: 0, vr: 0,
+            kind: 'sparkle'
+          })
+        } else if (g.vfx === 'rainbow' && Math.random() < 0.35) {
+          g.parts.push({
+            x: s.x + rand(-4, 4), y: s.y + rand(4, 12), vx: rand(-25, 25), vy: rand(20, 60),
+            life: 0.3, maxLife: 0.3, color: pick(['#ff007f', '#ffd93d', '#38bdf8', '#a855f7']), size: 3.5, rot: 0, vr: 0,
+            kind: 'confetti'
+          })
+        } else if (g.vfx === 'music' && Math.random() < 0.25) {
           g.parts.push({
             x: s.x, y: s.y, vx: rand(-20, 20), vy: rand(10, 40),
             life: 0.4, maxLife: 0.4, color: '#ec4899', size: 14, rot: 0, vr: 0,
@@ -4930,7 +5195,7 @@ export default function Home() {
               g.popped++
               g.score++
               persistStars(g.score)
-              audio.popFor(g.character) // your pal's own happy pop!
+              audio.popFor(g.character, g.streak) // your pal's harmonic pentatonic pop!
               haptics.pop()
 
               // ⏱️ Adrenaline Decaying Rush Multiplier
@@ -5647,6 +5912,18 @@ export default function Home() {
                     </span>
                   )
                 })}
+              </div>
+            )}
+            {hud.ghostRival && (
+              <div
+                className={`mt-1 flex items-center justify-between w-full px-2 py-0.5 rounded-full text-[9px] font-black ${
+                  hud.ghostRival.defeated
+                    ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-300'
+                    : 'bg-cyan-50 text-cyan-800 ring-1 ring-cyan-300 animate-pulse'
+                }`}
+              >
+                <span>{hud.ghostRival.defeated ? '🏆 RIVAL DEFEATED!' : `👻 ${hud.ghostRival.name}`}</span>
+                <span>{hud.ghostRival.score}⭐</span>
               </div>
             )}
           </div>
@@ -6831,6 +7108,27 @@ export default function Home() {
               >
                 NEXT LEVEL <ArrowRight size={28} aria-hidden />
               </button>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  if (typeof window !== 'undefined') {
+                    const origin = window.location.origin
+                    const path = window.location.pathname
+                    const name = encodeURIComponent(saveData?.profile?.displayName || 'Champ')
+                    const targetScore = Math.max(100, hud.score)
+                    const targetWave = hud.endlessWave || hud.level + 1
+                    const url = `${origin}${path}?challenge=1&rival=${targetScore}&wave=${targetWave}&name=${name}&char=${hud.character}`
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(url)
+                      setChallengeCopied(true)
+                      setTimeout(() => setChallengeCopied(false), 3000)
+                    }
+                  }
+                }}
+                className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-amber-300 bg-amber-50 text-base font-extrabold text-amber-700 shadow-sm transition hover:bg-amber-100 active:scale-95"
+              >
+                <Share2 size={20} aria-hidden /> {challengeCopied ? '✨ CHALLENGE LINK COPIED!' : '🔗 SHARE 1-CLICK CHALLENGE'}
+              </button>
             </div>
           </div>
         )}
@@ -6946,6 +7244,27 @@ export default function Home() {
                   <button
                     onClick={(e) => {
                       e.currentTarget.blur()
+                      if (typeof window !== 'undefined') {
+                        const origin = window.location.origin
+                        const path = window.location.pathname
+                        const name = encodeURIComponent(saveData?.profile?.displayName || 'Champ')
+                        const targetScore = Math.max(100, hud.score)
+                        const targetWave = hud.endlessWave || hud.level + 1
+                        const url = `${origin}${path}?challenge=1&rival=${targetScore}&wave=${targetWave}&name=${name}&char=${hud.character}`
+                        if (navigator.clipboard) {
+                          navigator.clipboard.writeText(url)
+                          setChallengeCopied(true)
+                          setTimeout(() => setChallengeCopied(false), 3000)
+                        }
+                      }
+                    }}
+                    className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-indigo-300 bg-indigo-50 text-base font-extrabold text-indigo-700 shadow-sm transition hover:bg-indigo-100 active:scale-95"
+                  >
+                    <Share2 size={20} aria-hidden /> {challengeCopied ? '✨ CHALLENGE LINK COPIED!' : '🔗 SHARE 1-CLICK CHALLENGE'}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
                       controlsRef.current?.toMenu()
                     }}
                     className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-slate-200 bg-white text-base font-extrabold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95"
@@ -6974,6 +7293,27 @@ export default function Home() {
                     className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-2xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95"
                   >
                     <RotateCcw size={28} aria-hidden /> PLAY AGAIN
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
+                      if (typeof window !== 'undefined') {
+                        const origin = window.location.origin
+                        const path = window.location.pathname
+                        const name = encodeURIComponent(saveData?.profile?.displayName || 'Champ')
+                        const targetScore = Math.max(100, hud.score)
+                        const targetWave = hud.endlessWave || hud.level + 1
+                        const url = `${origin}${path}?challenge=1&rival=${targetScore}&wave=${targetWave}&name=${name}&char=${hud.character}`
+                        if (navigator.clipboard) {
+                          navigator.clipboard.writeText(url)
+                          setChallengeCopied(true)
+                          setTimeout(() => setChallengeCopied(false), 3000)
+                        }
+                      }
+                    }}
+                    className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-pink-300 bg-pink-50 text-base font-extrabold text-pink-700 shadow-sm transition hover:bg-pink-100 active:scale-95"
+                  >
+                    <Share2 size={20} aria-hidden /> {challengeCopied ? '✨ CHALLENGE LINK COPIED!' : '🔗 SHARE 1-CLICK CHALLENGE'}
                   </button>
                   <button
                     onClick={(e) => {
