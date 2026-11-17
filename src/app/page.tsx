@@ -52,7 +52,7 @@ import {
   Mail,
   X,
 } from 'lucide-react'
-import { loadLocalSave, persistStars, recordLevelCompletion, saveLocalProgress, SavedGameData } from '@/lib/storage'
+import { loadLocalSave, persistStars, recordLevelCompletion, recordEndlessRun, saveLocalProgress, SavedGameData } from '@/lib/storage'
 import {
   ALL_BOSSES,
   ALL_ENEMIES,
@@ -90,7 +90,7 @@ const COLORS = {
      shootCooldown  = seconds between bubbles (smaller = faster shooting)
      fastMusic      = true = the music loops a little quicker (extra pep!)
    ─────────────────────────────────────────────────────────────────────── */
-type Mode = 'kids' | 'adults'
+type Mode = 'kids' | 'adults' | 'endless'
 
 
 interface ModeConfig {
@@ -130,6 +130,16 @@ const MODES: Record<Mode, ModeConfig> = {
     hearts: 3,
     monsterRadius: [16, 24],
     shootCooldown: 0.42,
+    fastMusic: true,
+    levels: generateLevels('adults'),
+  },
+  endless: {
+    label: 'ENDLESS OVERDRIVE',
+    emoji: '⚡',
+    blurb: 'infinite survival · perk card drafting · stackable builds',
+    hearts: 4,
+    monsterRadius: [18, 26],
+    shootCooldown: 0.35,
     fastMusic: true,
     levels: generateLevels('adults'),
   },
@@ -456,8 +466,101 @@ export const COSMETICS: CosmeticDef[] = [
   { id: 'hat_crown', name: 'Golden Tiara', emoji: '👑', cost: 50, reqLevel: 20, desc: 'A royal gleaming golden crown with ruby jewels.', hatKind: 'crown' },
 ]
 
+/* ════════ ⚡ ENDLESS OVERDRIVE ROGUE-LITE PERKS ════════ */
+export interface PerkCard {
+  id: string
+  name: string
+  emoji: string
+  rarity: 'Common' | 'Rare' | 'Legendary'
+  desc: string
+  badge: string
+}
+
+export const ALL_PERKS: PerkCard[] = [
+  {
+    id: 'volley',
+    name: 'Twin Cannons',
+    emoji: '⚔️',
+    rarity: 'Rare',
+    desc: 'Fires an extra side-by-side bubble on every shot!',
+    badge: 'TWIN SHOTS',
+  },
+  {
+    id: 'matrix',
+    name: 'Chronos Warp',
+    emoji: '⌛',
+    rarity: 'Rare',
+    desc: 'Near-miss slow-mo bullet-time lasts twice as long (+0.75s)!',
+    badge: 'SLOW-MO+',
+  },
+  {
+    id: 'grazing',
+    name: 'EMP Graze',
+    emoji: '⚡',
+    rarity: 'Legendary',
+    desc: 'Near-miss close calls trigger an EMP blast clearing nearby hazards!',
+    badge: 'EMP BURST',
+  },
+  {
+    id: 'recoil',
+    name: 'Hyper Thruster',
+    emoji: '🚀',
+    rarity: 'Common',
+    desc: '+28% faster bubble fire rate & +20% faster rocket movement speed!',
+    badge: 'RAPID FIRE',
+  },
+  {
+    id: 'siphon',
+    name: 'Heart Siphon',
+    emoji: '💖',
+    rarity: 'Legendary',
+    desc: 'Restores 1 heart every 25 monsters popped!',
+    badge: 'HEART REGEN',
+  },
+  {
+    id: 'shield',
+    name: 'Kinetic Ward',
+    emoji: '🫧',
+    rarity: 'Rare',
+    desc: 'Automatically recharges your Bubble Shield every 15 monsters popped!',
+    badge: 'AUTO SHIELD',
+  },
+  {
+    id: 'chain',
+    name: 'Plasma Splinter',
+    emoji: '✨',
+    rarity: 'Legendary',
+    desc: 'Popping a monster unleashes homing plasma bolts at nearby enemies!',
+    badge: 'CHAIN LIGHTNING',
+  },
+  {
+    id: 'magnet',
+    name: 'Supernova Magnet',
+    emoji: '🧲',
+    rarity: 'Common',
+    desc: 'Bonus stars and gift bubbles fly directly to you across the whole screen!',
+    badge: 'VACUUM',
+  },
+  {
+    id: 'adrenaline',
+    name: 'Adrenaline Rush',
+    emoji: '🔥',
+    rarity: 'Rare',
+    desc: 'Combo decay timer lasts 50% longer & combo multiplier caps at 5.0x!',
+    badge: '5x MULTIPLIER',
+  },
+  {
+    id: 'pierce',
+    name: 'Void Piercer',
+    emoji: '🎯',
+    rarity: 'Common',
+    desc: 'All bubble shots pierce through +1 additional silly enemy!',
+    badge: 'PIERCE +1',
+  },
+]
+
 /* ───────────────────────────── game types ───────────────────────────── */
-type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'levelSelect' | 'playing' | 'paused' | 'levelClear' | 'over' | 'won' | 'bye' | 'bazaar'
+type UIState = 'menu' | 'modeSelect' | 'charSelect' | 'levelSelect' | 'playing' | 'paused' | 'levelClear' | 'over' | 'won' | 'bye' | 'bazaar' | 'perkDraft'
 
 interface Monster {
   id: number // unique monster instance id
@@ -631,6 +734,11 @@ interface GameData {
   dashInvuln: number // i-frame duration in seconds
   decayMultiplier: number // rush combo multiplier (1.0 to 3.5x)
   decayTimer: number // remaining time before rush multiplier decays
+  endlessWave: number // current wave in Endless Overdrive mode
+  perks: string[] // stack of drafted perk IDs
+  draftChoices: PerkCard[] // 3 perks currently offered in draft modal
+  shieldPopsCount: number // counter for Kinetic Ward recharge
+  endlessPopsInWave: number // counter for Heart Siphon
 }
 
 function freshGame(): GameData {
@@ -707,14 +815,30 @@ function freshGame(): GameData {
     dashInvuln: 0,
     decayMultiplier: 1.0,
     decayTimer: 0,
+    endlessWave: 1,
+    perks: [],
+    draftChoices: [],
+    shieldPopsCount: 0,
+    endlessPopsInWave: 0,
   }
 }
 
 /* Effective goal for the current level (turbo mode shrinks it for testing) */
-const goalOf = (g: GameData) => (g.turbo ? 2 : levelsOf(g.mode)[g.level].goal)
+const goalOf = (g: GameData) => {
+  if (g.turbo) return 2
+  if (g.mode === 'endless') return 10 + (g.endlessWave || 1) * 3
+  return levelsOf(g.mode)[g.level]?.goal || 15
+}
 
 /* How many boops the current level's boss needs (turbo makes it quick too) */
-const bossHpOf = (g: GameData, b: BossConfig) => (g.turbo ? 2 : g.mode === 'adults' ? b.hpAdults : b.hpKids)
+const bossHpOf = (g: GameData, b: BossConfig) => {
+  if (g.turbo) return 2
+  if (g.mode === 'endless') {
+    const scale = 1 + (g.endlessWave || 1) * 0.15
+    return Math.round(b.hpAdults * scale)
+  }
+  return g.mode === 'adults' ? b.hpAdults : b.hpKids
+}
 
 /* ═══════════════════════════════════════════════════════════════════════
    🔊 SOUND ENGINE — every beep is generated with the Web Audio API,
@@ -2798,6 +2922,7 @@ export default function Home() {
     toMenu: () => void
     bye: () => void
     triggerDash: (dir?: number) => void
+    selectPerk: (perkId: string) => void
   } | null>(null)
 
   // React state = only the pretty HUD & overlay screens (the game itself
@@ -2824,6 +2949,9 @@ export default function Home() {
     decayMultiplier: 1.0,
     decayTimer: 0,
     dashCooldown: 0,
+    endlessWave: 1,
+    perks: [] as string[],
+    draftChoices: [] as PerkCard[],
   })
   const [stars, setStars] = useState(3)
   const [muted, setMuted] = useState(false)
@@ -2905,9 +3033,54 @@ export default function Home() {
         const dMul = Number(g.decayMultiplier.toFixed(1))
         const dTimer = Number(g.decayTimer.toFixed(1))
         const dCooldown = Number(g.dashCooldown.toFixed(1))
-        if (prev.level === g.level && prev.popped === g.popped && prev.hearts === g.hearts && prev.score === g.score && prev.goal === goal && prev.mode === g.mode && prev.character === g.character && prev.bossActive === bossActive && prev.shield === g.shield && prev.powerType === powerType && prev.powerStamp === powerStamp && prev.frenzyMeter === fMeter && prev.frenzyActive === g.frenzyActive && prev.streak === g.streak && prev.decayMultiplier === dMul && prev.decayTimer === dTimer && prev.dashCooldown === dCooldown)
+        const eWave = g.endlessWave || 1
+        const pLen = g.perks?.length || 0
+        if (
+          prev.level === g.level &&
+          prev.popped === g.popped &&
+          prev.hearts === g.hearts &&
+          prev.score === g.score &&
+          prev.goal === goal &&
+          prev.mode === g.mode &&
+          prev.character === g.character &&
+          prev.bossActive === bossActive &&
+          prev.shield === g.shield &&
+          prev.powerType === powerType &&
+          prev.powerStamp === powerStamp &&
+          prev.frenzyMeter === fMeter &&
+          prev.frenzyActive === g.frenzyActive &&
+          prev.streak === g.streak &&
+          prev.decayMultiplier === dMul &&
+          prev.decayTimer === dTimer &&
+          prev.dashCooldown === dCooldown &&
+          prev.endlessWave === eWave &&
+          prev.perks?.length === pLen &&
+          prev.draftChoices === g.draftChoices
+        )
           return prev
-        return { level: g.level, popped: g.popped, goal, hearts: g.hearts, maxHearts, score: g.score, mode: g.mode, character: g.character, bossActive, shield: g.shield, powerType, powerStamp, frenzyMeter: fMeter, frenzyActive: g.frenzyActive, streak: g.streak, decayMultiplier: dMul, decayTimer: dTimer, dashCooldown: dCooldown }
+        return {
+          level: g.level,
+          popped: g.popped,
+          goal,
+          hearts: g.hearts,
+          maxHearts,
+          score: g.score,
+          mode: g.mode,
+          character: g.character,
+          bossActive,
+          shield: g.shield,
+          powerType,
+          powerStamp,
+          frenzyMeter: fMeter,
+          frenzyActive: g.frenzyActive,
+          streak: g.streak,
+          decayMultiplier: dMul,
+          decayTimer: dTimer,
+          dashCooldown: dCooldown,
+          endlessWave: eWave,
+          perks: [...(g.perks || [])],
+          draftChoices: g.draftChoices || [],
+        }
       })
     }
 
@@ -2938,8 +3111,8 @@ export default function Home() {
         return
       }
 
-      if (g.mode === 'adults') {
-        // 🎯 GROWN-UPS MODE: Character perks (firing straight upward)
+      if (g.mode === 'adults' || g.mode === 'endless') {
+        // 🎯 GROWN-UPS & ENDLESS MODE: Character perks (firing straight upward)
         const fan = g.active?.type === 'rainbow' ? [-0.24, 0, 0.24] : [0]
 
         if (g.character === 'rocky') {
@@ -3051,6 +3224,34 @@ export default function Home() {
           })
         }
       }
+
+      // ⚡ Milestone 2 Endless Rogue-Lite Perk Upgrades
+      if (g.mode === 'endless') {
+        if (g.perks?.includes('recoil')) {
+          g.player.cool *= 0.72 // 28% faster fire rate!
+        }
+        if (g.perks?.includes('volley')) {
+          // Flank shots
+          for (const s of [-20, 20]) {
+            g.shots.push({
+              x: g.player.x + s,
+              y: py - 40,
+              vy: -PLAYER.shotSpeed * 1.05,
+              vx: s * 1.8,
+              r: 9,
+              kind,
+              wob: rand(0, 6),
+              pierce: g.perks?.includes('pierce') ? 2 : undefined,
+            })
+          }
+        }
+        if (g.perks?.includes('pierce')) {
+          for (let sIdx = g.shots.length - 1; sIdx >= Math.max(0, g.shots.length - 6); sIdx--) {
+            const sh = g.shots[sIdx]
+            sh.pierce = (sh.pierce || 1) + 1
+          }
+        }
+      }
       audio.shoot()
     }
 
@@ -3141,7 +3342,11 @@ export default function Home() {
       g.vfx = activeSave.activeVFX || 'classic'
       g.state = 'playing'
       setUi('playing')
-      addText(g, g.w / 2, g.h * 0.35, `${levelsOf(g.mode)[g.level].name} — GO!`, '#ff8fb1')
+      if (g.mode === 'endless') {
+        addText(g, g.w / 2, g.h * 0.35, `🌊 WAVE ${g.endlessWave || 1} — GO!`, '#38bdf8', 34)
+      } else {
+        addText(g, g.w / 2, g.h * 0.35, `${levelsOf(g.mode)[g.level].name} — GO!`, '#ff8fb1')
+      }
       audio.startMusic(getModeConfig(g.mode).fastMusic)
       syncHud()
     }
@@ -3194,6 +3399,13 @@ export default function Home() {
       audio.click()
       const save = loadLocalSave()
       setSaveData(save)
+      if (g.mode === 'endless') {
+        g.endlessWave = 1
+        g.perks = []
+        g.draftChoices = []
+        g.shieldPopsCount = 0
+        g.endlessPopsInWave = 0
+      }
       const highest = g.mode === 'kids' ? save.kidsHighestLevel : save.adultsHighestLevel
       const targetLvl = chosenLevel !== undefined ? chosenLevel : highest
       g.level = clamp(targetLvl, 0, 119)
@@ -3204,6 +3416,60 @@ export default function Home() {
       g.active = null
       g.shield = false
       beginLevel()
+    }
+
+    /* ⚡ Endless Overdrive Rogue-Lite Perk Drafting */
+    const triggerPerkDraft = () => {
+      // Clear hazards & projectiles to protect player
+      g.enemyStars.length = 0
+      g.monsters.length = 0
+      g.bossSpawned = false
+      audio.levelUp()
+      g.shake = 10
+      // Pick 3 random distinct perks from ALL_PERKS
+      const pool = [...ALL_PERKS]
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]]
+      }
+      g.draftChoices = pool.slice(0, 3)
+      g.state = 'perkDraft'
+      setUi('perkDraft')
+      syncHud()
+    }
+
+    const selectPerk = (perkId: string) => {
+      const perk = ALL_PERKS.find((p) => p.id === perkId)
+      if (!perk) return
+      g.perks = g.perks || []
+      g.perks.push(perkId)
+
+      // Instant perk trigger bonuses
+      if (perkId === 'siphon') {
+        const maxHearts = getModeConfig(g.mode).hearts
+        if (g.hearts < maxHearts) g.hearts++
+      }
+      if (perkId === 'shield') {
+        g.shield = true
+      }
+
+      audio.newFriend()
+      audio.pop()
+      g.shake = 12
+      addText(g, g.w / 2, g.h * 0.45, `+ ${perk.name}! ⚡`, '#ffd93d', 30)
+
+      // Advance wave
+      g.endlessWave = (g.endlessWave || 1) + 1
+      g.popped = 0
+      g.endlessPopsInWave = 0
+      g.shieldPopsCount = 0
+      g.bossSpawned = false
+      g.spawnT = 0.5
+      g.draftChoices = []
+      g.state = 'playing'
+      setUi('playing')
+      addText(g, g.w / 2, g.h * 0.35, `🌊 WAVE ${g.endlessWave} — GO!`, '#38bdf8', 34)
+      syncHud()
     }
 
     /* Start any specific level directly from the 120-level select map */
@@ -3307,6 +3573,10 @@ export default function Home() {
       persistStars(g.score)
       g.monsters.length = 0
       g.shots.length = 0
+      if (g.mode === 'endless') {
+        triggerPerkDraft()
+        return
+      }
       // hush any "new friend" pop-ups — the reward screen takes the stage!
       g.introQueue.length = 0
       if (introTimer.id) clearTimeout(introTimer.id)
@@ -3374,6 +3644,12 @@ export default function Home() {
             if (mm.boss < 0 && mm.y > g.h * 0.5) mm.y -= 160
           }
         } else {
+          if (g.mode === 'endless') {
+            try {
+              const updatedSave = recordEndlessRun(g.score, g.endlessWave || 1)
+              setSaveData(updatedSave)
+            } catch {}
+          }
           g.state = 'over'
           setUi('over')
           audio.stopMusic()
@@ -3571,7 +3847,13 @@ export default function Home() {
        has arrived — so new pals join the party gradually, level by level. */
     const spawnMonster = (L: LevelConfig) => {
       const [rMin, rMax] = getModeConfig(g.mode).monsterRadius // grown-ups get tinier targets!
-      const types = (Object.keys(ENEMIES) as EnemyType[]).filter((k) => g.level >= ENEMIES[k].fromLevel)
+      const types = (Object.keys(ENEMIES) as EnemyType[]).filter((k) => {
+        const from = ENEMIES[k].fromLevel
+        if (g.mode === 'endless') {
+          return (g.endlessWave || 1) * 3 >= from
+        }
+        return g.level >= from
+      })
       let total = 0
       for (const k of types) total += ENEMIES[k].weight
       let roll = Math.random() * total
@@ -3632,10 +3914,11 @@ export default function Home() {
        to side, can never reach the ground, and pops into fireworks when
        all of its little health stars are booped away! */
     const spawnBoss = () => {
-      const b = BOSSES[Math.min(BOSSES.length - 1, Math.floor(g.level / 10))]
+      const bIdx = g.mode === 'endless' ? Math.max(0, Math.floor(((g.endlessWave || 1) / 5) - 1)) % BOSSES.length : Math.floor(g.level / 10)
+      const b = BOSSES[Math.min(BOSSES.length - 1, bIdx)]
       const r = clamp(g.w * 0.075, 38, 56) * (g.mode === 'adults' ? 0.85 : 1)
       const hp = bossHpOf(g, b)
-      const lvlColors = getLevelColors(g.level)
+      const lvlColors = getLevelColors(g.mode === 'endless' ? (g.endlessWave || 1) * 3 : g.level)
       g.monsters.push({
         id: g.nextMonsterId++,
         x: g.w / 2,
@@ -3645,7 +3928,7 @@ export default function Home() {
         color: lvlColors.bossColor || b.color,
         type: 'blobby', // bosses are drawn by drawBoss(), type is unused
         move: 'straight',
-        boss: Math.floor(g.level / 10),
+        boss: bIdx,
         hp,
         maxHp: hp,
         wob: 0,
@@ -3664,7 +3947,7 @@ export default function Home() {
       g.bossSpawned = true
       g.introQueue.push({ name: b.name, emoji: b.emoji, hint: 'boop it until every star is gone!', boss: true })
       showNextIntro()
-      addText(g, g.w / 2, g.h * 0.38, 'BOSS TIME!', '#f278ab', 30)
+      addText(g, g.w / 2, g.h * 0.38, g.mode === 'endless' ? '⚡ ELITE BOSS WAVE!' : 'BOSS TIME!', '#f278ab', 30)
       syncHud()
     }
 
@@ -3751,10 +4034,11 @@ export default function Home() {
 
       // 🚀 Standard responsive movement for all modes (arrows completely removed)
       let vx = 0
-      if (keys.left) vx -= PLAYER.speed * (g.mode === 'adults' ? 1.15 : 1)
-      if (keys.right) vx += PLAYER.speed * (g.mode === 'adults' ? 1.15 : 1)
+      const speedBonus = (g.mode === 'endless' && g.perks?.includes('recoil')) ? 1.22 : (g.mode === 'adults' ? 1.15 : 1)
+      if (keys.left) vx -= PLAYER.speed * speedBonus
+      if (keys.right) vx += PLAYER.speed * speedBonus
       if (g.dragging && g.targetX !== null) {
-        vx = clamp((g.targetX - p.x) * 10, -PLAYER.speed * 1.4, PLAYER.speed * 1.4)
+        vx = clamp((g.targetX - p.x) * 10, -PLAYER.speed * 1.4 * (speedBonus > 1 ? 1.15 : 1), PLAYER.speed * 1.4 * (speedBonus > 1 ? 1.15 : 1))
       }
       p.x = clamp(p.x + vx * dt, 40, g.w - 40)
       const lean = clamp(vx / PLAYER.speed, -1, 1) * 0.22
@@ -3763,7 +4047,18 @@ export default function Home() {
       if (keys.shoot) shootNow()
 
       /* ── spawning: slow at first, gently speeding up ── */
-      const L = levelsOf(g.mode)[g.level]
+      const L: LevelConfig = g.mode === 'endless'
+        ? {
+            goal: 10 + (g.endlessWave || 1) * 3,
+            spawnEvery: Math.max(0.32, 1.25 - (g.endlessWave || 1) * 0.04),
+            spawnEveryMin: Math.max(0.18, 0.65 - (g.endlessWave || 1) * 0.025),
+            fallSpeed: Math.min(260, 95 + (g.endlessWave || 1) * 8),
+            fallSpeedMax: Math.min(340, 150 + (g.endlessWave || 1) * 10),
+            maxOnScreen: Math.min(18, 6 + Math.floor((g.endlessWave || 1) * 0.8)),
+            drift: 20 + Math.min(60, (g.endlessWave || 1) * 4),
+            name: `Wave ${g.endlessWave || 1}`,
+          }
+        : levelsOf(g.mode)[g.level]
       const goal = goalOf(g)
       const progress = Math.min(1, g.popped / goal)
       g.spawnT -= dt
@@ -3772,6 +4067,12 @@ export default function Home() {
         spawnMonster(L)
         const gap = lerp(L.spawnEvery, L.spawnEveryMin, progress) * (g.turbo ? 0.12 : 1) * rand(0.75, 1.25)
         g.spawnT = gap
+      }
+
+      // ⚡ Endless Mode: Check wave completion on non-boss waves
+      if (g.mode === 'endless' && ((g.endlessWave || 1) % 5 !== 0) && g.popped >= goal && g.monsters.length === 0) {
+        triggerPerkDraft()
+        return
       }
 
       /* ── 🎁 gift power-ups drift down every little while ──
@@ -3953,11 +4254,23 @@ export default function Home() {
           const mdistSq = mdx * mdx + mdy * mdy
           if (mdistSq >= 38 * 38 && mdistSq < 78 * 78) {
             m.nearMissed = true
-            g.bulletTime = 0.35
+            g.bulletTime = (g.mode === 'endless' && g.perks?.includes('matrix')) ? 0.75 : 0.35
             g.shake = 6
             g.frenzyMeter = Math.min(100, g.frenzyMeter + 20)
             audio.nearMiss()
             addText(g, p.x, palY - 45, '⚡ DIVE DODGE! +20% RUSH', '#f59e0b', 20)
+
+            if (g.mode === 'endless' && g.perks?.includes('grazing')) {
+              for (let sIdx = g.enemyStars.length - 1; sIdx >= 0; sIdx--) {
+                const star = g.enemyStars[sIdx]
+                const sdist = Math.hypot(star.x - p.x, star.y - palY)
+                if (sdist < 180) {
+                  burst(g, star.x, star.y, '#38bdf8')
+                  g.enemyStars.splice(sIdx, 1)
+                }
+              }
+              addText(g, p.x, palY - 68, '⚡ EMP SHOCKWAVE!', '#38bdf8', 20)
+            }
           }
         }
 
@@ -4079,6 +4392,12 @@ export default function Home() {
                 audio.giantPop()
                 addText(g, g.w / 2, g.h * 0.5, '🫧 BUBBLE RESCUE! 🌟', '#ffd93d', 26)
               } else {
+                if (g.mode === 'endless') {
+                  try {
+                    const updatedSave = recordEndlessRun(g.score, g.endlessWave || 1)
+                    setSaveData(updatedSave)
+                  } catch {}
+                }
                 g.state = 'over'
                 setUi('over')
                 audio.stopMusic()
@@ -4093,11 +4412,23 @@ export default function Home() {
         // ⚡ Near-Miss Danger Zone & Slow-Mo Bullet Time
         if (!es.nearMissed && distSq >= 36 * 36 && distSq < 72 * 72 && !g.dashInvuln) {
           es.nearMissed = true
-          g.bulletTime = 0.35
+          g.bulletTime = (g.mode === 'endless' && g.perks?.includes('matrix')) ? 0.75 : 0.35
           g.shake = 5
           g.frenzyMeter = Math.min(100, g.frenzyMeter + 20)
           audio.nearMiss()
           addText(g, p.x, palY - 45, '⚡ NEAR MISS! +20% RUSH', '#f59e0b', 20)
+
+          if (g.mode === 'endless' && g.perks?.includes('grazing')) {
+            for (let sIdx = g.enemyStars.length - 1; sIdx >= 0; sIdx--) {
+              const star = g.enemyStars[sIdx]
+              const sdist = Math.hypot(star.x - p.x, star.y - palY)
+              if (sdist < 180) {
+                burst(g, star.x, star.y, '#38bdf8')
+                g.enemyStars.splice(sIdx, 1)
+              }
+            }
+            addText(g, p.x, palY - 68, '⚡ EMP SHOCKWAVE!', '#38bdf8', 20)
+          }
           for (let k = 0; k < 5; k++) {
             g.parts.push({
               x: es.x,
@@ -4326,13 +4657,50 @@ export default function Home() {
               audio.popFor(g.character) // your pal's own happy pop!
 
               // ⏱️ Adrenaline Decaying Rush Multiplier
-              g.decayTimer = 2.6
-              g.decayMultiplier = Math.min(3.5, Number((g.decayMultiplier + 0.25).toFixed(2)))
+              const maxMul = (g.mode === 'endless' && g.perks?.includes('adrenaline')) ? 5.0 : 3.5
+              const dDuration = (g.mode === 'endless' && g.perks?.includes('adrenaline')) ? 3.8 : 2.6
+              g.decayTimer = dDuration
+              g.decayMultiplier = Math.min(maxMul, Number((g.decayMultiplier + 0.25).toFixed(2)))
               const bonusStars = Math.floor(g.decayMultiplier) - 1
               if (bonusStars > 0) {
                 g.score += bonusStars
                 persistStars(g.score)
                 addText(g, m.x + 28, m.y - m.r * 0.4 - 24, `+${bonusStars}⭐ RUSH!`, '#f59e0b', 15)
+              }
+
+              // ⚡ Milestone 2 Endless Rogue-Lite Perk triggers
+              if (g.mode === 'endless') {
+                g.endlessPopsInWave = (g.endlessPopsInWave || 0) + 1
+                g.shieldPopsCount = (g.shieldPopsCount || 0) + 1
+
+                if (g.perks?.includes('shield') && g.shieldPopsCount >= 15) {
+                  g.shieldPopsCount = 0
+                  if (!g.shield) {
+                    g.shield = true
+                    audio.powerUp()
+                    addText(g, g.player.x, g.h - 130, '🫧 KINETIC WARD READY!', '#38bdf8', 20)
+                  }
+                }
+
+                if (g.perks?.includes('siphon') && g.endlessPopsInWave % 25 === 0) {
+                  const maxH = getModeConfig(g.mode).hearts
+                  if (g.hearts < maxH) {
+                    g.hearts++
+                    audio.powerUp()
+                    addText(g, g.player.x, g.h - 130, '💖 HEART SIPHON!', '#f43f5e', 22)
+                  }
+                }
+
+                if (g.perks?.includes('chain')) {
+                  const targets = g.monsters.filter((om) => om !== m && om.y > 20 && om.y < g.h - 50)
+                  if (targets.length > 0) {
+                    const t = pick(targets)
+                    t.hp--
+                    t.hitFlash = 0.35
+                    burst(g, t.x, t.y, '#a855f7')
+                    addText(g, t.x, t.y - 12, '⚡ CHAIN!', '#c084fc', 16)
+                  }
+                }
               }
 
               // 🦠 Splitting Cluster Enemy (Mitosis Mite)
@@ -4391,8 +4759,18 @@ export default function Home() {
               if (Math.random() < PU.starChance) {
                 g.starDrops.push({ x: m.x, y: m.y, vx: rand(-50, 50), vy: -90, rot: rand(0, 6), vr: rand(-5, 5), alpha: 1 })
               }
-              // goal reached? time for the level's big friendly boss!
-              if (g.popped >= goal && !g.bossSpawned) spawnBoss()
+              // goal reached? time for the level's big friendly boss (or wave clear)!
+              if (g.mode === 'endless') {
+                if ((g.endlessWave || 1) % 5 === 0) {
+                  if (g.popped >= goal && !g.bossSpawned) spawnBoss()
+                } else {
+                  if (g.popped >= goal && g.monsters.length === 0) {
+                    triggerPerkDraft()
+                  }
+                }
+              } else {
+                if (g.popped >= goal && !g.bossSpawned) spawnBoss()
+              }
             } else {
               // "tee-hee!" — Sleepy Cloud giggles & turns lighter after boop one
               audio.giggle()
@@ -4423,7 +4801,7 @@ export default function Home() {
       }
 
       /* ── 🎁⭐ gifts & bonus stars drift down — catch them! ── */
-      const magnet = g.active?.type === 'magnet'
+      const magnet = g.active?.type === 'magnet' || (g.mode === 'endless' && g.perks?.includes('magnet'))
       // palY defined above for enemy stars and powerups
       for (let i = g.powerups.length - 1; i >= 0; i--) {
         const u = g.powerups[i]
@@ -4763,7 +5141,7 @@ export default function Home() {
       syncHud()
     }
 
-    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, pullGachapon, toggleVFX, buySecretPal, buyIslandToy, unlockZenMode, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye, triggerDash }
+    controlsRef.current = { startGame, startLevel, openLevelSelect, openBazaar, closeBazaar, buyBooster, toggleCosmetic, pullGachapon, toggleVFX, buySecretPal, buyIslandToy, unlockZenMode, showModes, pickMode, backToModes, selectCharacter, next, togglePause, resumeGame, restartLevel, toggleMute, toMenu, bye, triggerDash, selectPerk }
 
     /* ── go! ── */
     let raf = 0
@@ -4908,9 +5286,13 @@ export default function Home() {
         </div>
 
         {/* ── HUD: level & progress (top-center; below hearts on phones) ── */}
-        <div className="pointer-events-none absolute left-1/2 top-[68px] z-10 w-32 -translate-x-1/2 rounded-2xl bg-white/85 px-3 py-2 text-center shadow-md sm:top-3 sm:w-44 sm:px-4">
-          <div className="text-sm font-extrabold text-amber-600 sm:text-base">{getModeConfig(hud.mode).levels[hud.level]?.name || `Level ${hud.level + 1}`}</div>
-          <div className="text-[10px] font-bold text-amber-500">World {Math.floor(hud.level / 10) + 1} of 12</div>
+        <div className="pointer-events-none absolute left-1/2 top-[68px] z-10 w-32 -translate-x-1/2 rounded-2xl bg-white/85 px-3 py-2 text-center shadow-md sm:top-3 sm:w-48 sm:px-4">
+          <div className="text-sm font-extrabold text-amber-600 sm:text-base">
+            {hud.mode === 'endless' ? `🌊 WAVE ${hud.endlessWave}` : (getModeConfig(hud.mode).levels[hud.level]?.name || `Level ${hud.level + 1}`)}
+          </div>
+          <div className="text-[10px] font-bold text-amber-500">
+            {hud.mode === 'endless' ? `Endless Overdrive · ${hud.perks.length} Perks` : `World ${Math.floor(hud.level / 10) + 1} of 12`}
+          </div>
           <div className="mt-1 h-2.5 w-full overflow-hidden rounded-full bg-amber-100">
             <div
               className="h-full rounded-full bg-gradient-to-r from-pink-400 to-amber-400 transition-all duration-300"
@@ -4918,7 +5300,9 @@ export default function Home() {
             />
           </div>
           {hud.bossActive ? (
-            <div className="mt-0.5 text-xs font-extrabold text-pink-500">⭐ boss time!</div>
+            <div className="mt-0.5 text-xs font-extrabold text-pink-500">
+              {hud.mode === 'endless' ? '⚡ ELITE BOSS BATTLE!' : '⭐ boss time!'}
+            </div>
           ) : (
             <div className="mt-0.5 text-xs font-bold text-gray-500">
               {Math.min(hud.popped, goal)} / {goal} popped
@@ -4954,6 +5338,24 @@ export default function Home() {
               <div className="mt-1 flex items-center justify-between w-full px-0.5 text-[9px] font-black text-amber-600">
                 <span className="animate-pulse">🔥 {hud.decayMultiplier.toFixed(1)}x RUSH</span>
                 <span className="text-amber-500 font-bold">{hud.decayTimer.toFixed(1)}s</span>
+              </div>
+            )}
+            {hud.mode === 'endless' && hud.perks.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap items-center justify-center gap-1 pt-1 border-t border-indigo-100 w-full">
+                {hud.perks.map((pId, idx) => {
+                  const perk = ALL_PERKS.find(p => p.id === pId)
+                  if (!perk) return null
+                  return (
+                    <span
+                      key={`${pId}-${idx}`}
+                      title={`${perk.name}: ${perk.desc}`}
+                      className="flex items-center gap-0.5 rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-black text-indigo-700 ring-1 ring-indigo-200"
+                    >
+                      <span>{perk.emoji}</span>
+                      <span className="hidden sm:inline">{perk.name}</span>
+                    </span>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -5956,6 +6358,25 @@ export default function Home() {
                   <span className="absolute -top-2 right-3 rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold text-pink-500 shadow" aria-hidden>⭐ last time</span>
                 )}
               </button>
+              <button
+                onClick={(e) => {
+                  e.currentTarget.blur()
+                  controlsRef.current?.pickMode('endless')
+                }}
+                className="relative mt-2 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 text-xl font-extrabold text-white shadow-lg shadow-indigo-300 transition hover:from-violet-500 hover:to-indigo-500 active:scale-95 border-2 border-indigo-200"
+              >
+                <span className="text-3xl" aria-hidden>⚡</span>
+                <span className="flex flex-col items-start leading-tight">
+                  <span className="flex items-center gap-2">
+                    {MODES.endless.label}
+                    <span className="rounded-full bg-amber-400 px-1.5 py-0.5 text-[9px] font-black text-slate-900 tracking-wider">NEW</span>
+                  </span>
+                  <span className="text-[11px] font-bold text-indigo-100">{MODES.endless.blurb}</span>
+                </span>
+                {lastMode === 'endless' && (
+                  <span className="absolute -top-2 right-3 rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold text-indigo-600 shadow" aria-hidden>⭐ last time</span>
+                )}
+              </button>
 
               <button
                 onClick={(e) => {
@@ -5976,7 +6397,9 @@ export default function Home() {
             <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-amber-200 bg-white p-5 text-center shadow-2xl sm:p-6">
               <h2 className="text-2xl font-extrabold text-pink-500 sm:text-3xl">Pick your pal! 🎉</h2>
               <p className="mt-1 text-sm font-bold text-gray-500">
-                Level {hud.level + 1} of 120 · ⭐ {hud.score} stars collected!
+                {hud.mode === 'endless'
+                  ? `⚡ Endless Overdrive · Wave 1 · Best Wave: ${saveData?.endlessMaxWave || 1} · High Score: ${saveData?.endlessHighScore || 0} ⭐`
+                  : `Level ${hud.level + 1} of 120 · ⭐ ${hud.score} stars collected!`}
               </p>
               <div className="mx-auto mt-2 flex items-center justify-center gap-1.5 rounded-full bg-amber-100/80 px-3 py-1 text-xs font-extrabold text-amber-800">
                 <span>Passcode:</span>
@@ -6020,16 +6443,20 @@ export default function Home() {
                 <Play size={30} aria-hidden /> LET&rsquo;S GO!
               </button>
               <div className="mt-2 flex items-center justify-center gap-4">
-                <button
-                  onClick={(e) => {
-                    e.currentTarget.blur()
-                    controlsRef.current?.openLevelSelect()
-                  }}
-                  className="rounded-full py-2 text-sm font-extrabold text-amber-700 underline underline-offset-2 transition hover:text-amber-800"
-                >
-                  🗺️ Choose Level
-                </button>
-                <span className="text-gray-300">·</span>
+                {hud.mode !== 'endless' && (
+                  <>
+                    <button
+                      onClick={(e) => {
+                        e.currentTarget.blur()
+                        controlsRef.current?.openLevelSelect()
+                      }}
+                      className="rounded-full py-2 text-sm font-extrabold text-amber-700 underline underline-offset-2 transition hover:text-amber-800"
+                    >
+                      🗺️ Choose Level
+                    </button>
+                    <span className="text-gray-300">·</span>
+                  </>
+                )}
                 <button
                   onClick={(e) => {
                     e.currentTarget.blur()
@@ -6088,39 +6515,157 @@ export default function Home() {
           </div>
         )}
 
+        {/* ════════ OVERLAY: PERK CARD DRAFT (Endless Overdrive) ════════ */}
+        {ui === 'perkDraft' && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center overflow-y-auto bg-slate-950/80 p-4 backdrop-blur-md">
+            <div className="pop-in my-auto w-full max-w-2xl rounded-3xl border-4 border-indigo-400/60 bg-gradient-to-b from-slate-900 to-indigo-950 p-6 text-center shadow-2xl sm:p-8">
+              <div className="inline-flex items-center gap-2 rounded-full bg-indigo-500/20 px-4 py-1.5 text-xs font-black tracking-widest text-indigo-300 ring-1 ring-indigo-400/40 uppercase">
+                ⚡ Wave {hud.endlessWave} Cleared ⚡
+              </div>
+              <h2 className="mt-3 text-3xl font-black text-white sm:text-4xl tracking-tight">
+                CHOOSE AN OVERDRIVE PERK
+              </h2>
+              <p className="mt-1.5 text-sm font-bold text-indigo-200">
+                Enhance your pal with stackable rogue-lite powers for the next wave!
+              </p>
+
+              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {hud.draftChoices.map((perk) => {
+                  const isLegendary = perk.rarity === 'Legendary'
+                  const isRare = perk.rarity === 'Rare'
+                  return (
+                    <button
+                      key={perk.id}
+                      onClick={(e) => {
+                        e.currentTarget.blur()
+                        controlsRef.current?.selectPerk(perk.id)
+                      }}
+                      className={`group relative flex flex-col items-center justify-between rounded-2xl border-2 p-5 text-center transition hover:-translate-y-1.5 hover:shadow-2xl active:scale-95 ${
+                        isLegendary
+                          ? 'border-amber-400/80 bg-gradient-to-b from-amber-950/40 to-slate-900 hover:border-amber-300 hover:shadow-amber-500/30'
+                          : isRare
+                          ? 'border-indigo-400/80 bg-gradient-to-b from-indigo-950/40 to-slate-900 hover:border-indigo-300 hover:shadow-indigo-500/30'
+                          : 'border-emerald-400/80 bg-gradient-to-b from-emerald-950/40 to-slate-900 hover:border-emerald-300 hover:shadow-emerald-500/30'
+                      }`}
+                    >
+                      {/* Rarity Tag */}
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider ${
+                          isLegendary
+                            ? 'bg-amber-400 text-slate-950'
+                            : isRare
+                            ? 'bg-indigo-400 text-slate-950'
+                            : 'bg-emerald-400 text-slate-950'
+                        }`}
+                      >
+                        {perk.rarity}
+                      </span>
+
+                      {/* Perk Icon */}
+                      <div className="my-3 text-5xl transition group-hover:scale-110 drop-shadow">
+                        {perk.emoji}
+                      </div>
+
+                      {/* Title & Badge */}
+                      <div className="w-full">
+                        <div className="text-lg font-black text-white">{perk.name}</div>
+                        <div className="mt-1 rounded-md bg-white/10 px-2 py-0.5 text-[11px] font-black text-indigo-300">
+                          {perk.badge}
+                        </div>
+                        <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-300">
+                          {perk.desc}
+                        </p>
+                      </div>
+
+                      {/* Select Button */}
+                      <div className="mt-4 w-full rounded-xl bg-white/10 py-2 text-xs font-black tracking-wider text-white transition group-hover:bg-white group-hover:text-slate-950">
+                        SELECT PERK
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ════════ OVERLAY: GREAT TRY (out of hearts — always encouraging!) ════════ */}
         {ui === 'over' && (
           <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-white/55 p-4 backdrop-blur-[2px]">
             <div className="pop-in my-auto w-full max-w-md rounded-3xl border-4 border-pink-200 bg-white p-6 text-center shadow-2xl sm:p-8">
-              <div className="text-6xl" aria-hidden>🌈</div>
-              <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">Great try! Play again?</h2>
-              <p className="mt-2 text-base font-bold text-gray-500">
-                The silly monsters say “good game!” 👾
-              </p>
-              <p className="mt-1 text-sm font-bold text-amber-500">
-                {CHARACTERS[hud.character].emoji} {CHARACTERS[hud.character].name} says “Great try, friend!”
-              </p>
-              <p className="mt-3 flex items-center justify-center gap-1.5 text-lg font-extrabold text-amber-500">
-                <Star size={22} className="fill-amber-400 text-amber-400" aria-hidden /> You collected {hud.score} stars!
-              </p>
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur()
-                  controlsRef.current?.startGame()
-                }}
-                className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-2xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95"
-              >
-                <RotateCcw size={28} aria-hidden /> PLAY AGAIN
-              </button>
-              <button
-                onClick={(e) => {
-                  e.currentTarget.blur()
-                  controlsRef.current?.bye()
-                }}
-                className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-rose-200 bg-white text-base font-extrabold text-rose-400 shadow-sm transition hover:bg-rose-50 active:scale-95"
-              >
-                <DoorOpen size={20} aria-hidden /> QUIT GAME
-              </button>
+              {hud.mode === 'endless' ? (
+                <>
+                  <div className="text-6xl" aria-hidden>⚡</div>
+                  <h2 className="mt-2 text-3xl font-black text-indigo-600 sm:text-4xl">OVERDRIVE RUN OVER</h2>
+                  <p className="mt-2 text-base font-bold text-gray-600">
+                    You survived to <span className="text-indigo-600 font-extrabold">Wave {hud.endlessWave}</span>!
+                  </p>
+                  <div className="my-3 flex flex-col gap-1 rounded-2xl bg-indigo-50 p-3 text-sm font-bold text-indigo-900 border border-indigo-200">
+                    <div className="flex justify-between items-center">
+                      <span>🏆 Best Wave Reached:</span>
+                      <span className="font-black text-indigo-600">Wave {saveData?.endlessMaxWave || hud.endlessWave}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>⭐ Endless High Score:</span>
+                      <span className="font-black text-amber-500">{saveData?.endlessHighScore || hud.score} ⭐</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>⚡ Perks Drafted:</span>
+                      <span className="font-black text-purple-600">{hud.perks.length} Perks</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
+                      controlsRef.current?.startGame()
+                    }}
+                    className="mt-4 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-gradient-to-r from-violet-600 to-indigo-600 text-2xl font-extrabold text-white shadow-lg shadow-indigo-300 transition hover:from-violet-500 hover:to-indigo-500 active:scale-95"
+                  >
+                    <RotateCcw size={28} aria-hidden /> PLAY AGAIN
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
+                      controlsRef.current?.toMenu()
+                    }}
+                    className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-slate-200 bg-white text-base font-extrabold text-slate-600 shadow-sm transition hover:bg-slate-50 active:scale-95"
+                  >
+                    <DoorOpen size={20} aria-hidden /> MAIN MENU
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="text-6xl" aria-hidden>🌈</div>
+                  <h2 className="mt-2 text-3xl font-extrabold text-pink-500 sm:text-4xl">Great try! Play again?</h2>
+                  <p className="mt-2 text-base font-bold text-gray-500">
+                    The silly monsters say “good game!” 👾
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-amber-500">
+                    {CHARACTERS[hud.character].emoji} {CHARACTERS[hud.character].name} says “Great try, friend!”
+                  </p>
+                  <p className="mt-3 flex items-center justify-center gap-1.5 text-lg font-extrabold text-amber-500">
+                    <Star size={22} className="fill-amber-400 text-amber-400" aria-hidden /> You collected {hud.score} stars!
+                  </p>
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
+                      controlsRef.current?.startGame()
+                    }}
+                    className="mt-5 flex h-16 w-full items-center justify-center gap-3 rounded-full bg-pink-400 text-2xl font-extrabold text-white shadow-lg shadow-pink-200 transition hover:bg-pink-500 active:scale-95"
+                  >
+                    <RotateCcw size={28} aria-hidden /> PLAY AGAIN
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget.blur()
+                      controlsRef.current?.bye()
+                    }}
+                    className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-rose-200 bg-white text-base font-extrabold text-rose-400 shadow-sm transition hover:bg-rose-50 active:scale-95"
+                  >
+                    <DoorOpen size={20} aria-hidden /> QUIT GAME
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}

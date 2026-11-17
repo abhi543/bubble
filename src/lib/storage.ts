@@ -23,7 +23,7 @@ export interface LevelRecord {
 
 export interface SavedGameData {
   profile: PlayerProfile
-  mode: 'kids' | 'adults'
+  mode: 'kids' | 'adults' | 'endless'
   kidsHighestLevel: number
   adultsHighestLevel: number
   kidsStarsTotal: number
@@ -40,6 +40,8 @@ export interface SavedGameData {
   islandItems?: string[]
   zenUnlocked?: boolean
   totalStars: number
+  endlessHighScore?: number
+  endlessMaxWave?: number
 }
 
 const ADJECTIVES = [
@@ -144,7 +146,7 @@ export function loadLocalSave(): SavedGameData {
       return fresh
     }
     // Sanitize mode in case an older or corrupted save had 'advanced' or invalid mode
-    if (parsed.mode !== 'kids' && parsed.mode !== 'adults') {
+    if (parsed.mode !== 'kids' && parsed.mode !== 'adults' && parsed.mode !== 'endless') {
       parsed.mode = 'kids'
     }
     if (!parsed.kidsLevelsRecord) {
@@ -287,5 +289,17 @@ export function dispatchSilentCloudSync(data: SavedGameData): void {
       // Safe fallback
     }
   }, 1200)
+}
+
+/**
+ * Record an Endless Mode run performance
+ */
+export function recordEndlessRun(score: number, wave: number): SavedGameData {
+  const save = loadLocalSave()
+  save.endlessHighScore = Math.max(save.endlessHighScore || 0, score)
+  save.endlessMaxWave = Math.max(save.endlessMaxWave || 0, wave)
+  save.totalStars = (save.totalStars || 0) + score
+  saveLocalProgress(save)
+  return save
 }
 
